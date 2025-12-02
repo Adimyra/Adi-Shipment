@@ -78,6 +78,16 @@
             "stats_filter": "{}",
             "type": "Page",
             "url": ""
+        },
+        {
+            "color": "Green",
+            "doc_view": "List",
+            "icon": "fa fa-list",
+            "label": "Shiprocket Orders",
+            "link_to": "Shiprocket Order",
+            "stats_filter": "{}",
+            "type": "DocType",
+            "url": ""
         }
     ],
     "title": "Adi Shipment"

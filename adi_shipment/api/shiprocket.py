@@ -95,7 +95,7 @@ def create_shipment_from_dn(dn_name):
     payload = {
         "order_id": dn.name,
         "order_date": str(dn.posting_date),
-        "pickup_location": "Primary", # Must match a pickup location in Shiprocket
+        "pickup_location": "work", # Updated to match your Shiprocket account
         "billing_customer_name": dn.customer_name,
         "billing_last_name": "",
         "billing_address": billing_address_1,
@@ -128,7 +128,8 @@ def create_shipment_from_dn(dn_name):
         response = requests.post(url, json=payload, headers=headers)
         data = response.json()
         
-        if response.status_code not in [200, 201]:
+        # Check for HTTP error codes OR API level errors (missing order_id)
+        if response.status_code not in [200, 201] or not data.get("order_id"):
              error_msg = data.get('message', response.text)
              if isinstance(error_msg, dict):
                  error_msg = json.dumps(error_msg)

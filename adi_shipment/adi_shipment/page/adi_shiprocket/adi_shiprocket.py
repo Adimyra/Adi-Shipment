@@ -77,7 +77,56 @@ def create_custom_order(order_details_str):
     try:
         res = requests.post(url, headers=headers, json=order_details) 
         res.raise_for_status() 
-        return res.json()  
+        response_data = res.json()
+
+        # Check for API level errors (missing order_id) even if status is 200
+        if not response_data.get('order_id'):
+             error_msg = response_data.get('message', 'Unknown Error')
+             if isinstance(error_msg, dict):
+                 error_msg = json.dumps(error_msg)
+             return {"error": error_msg}
+
+        # Save to Shiprocket Order DocType
+        if response_data.get('order_id'):
+            # Attempt to Generate AWB immediately
+            shipment_id = response_data.get('shipment_id')
+            if shipment_id:
+                awb_url = "https://apiv2.shiprocket.in/v1/external/courier/assign/awb"
+                awb_payload = {"shipment_id": shipment_id}
+                try:
+                    awb_response = requests.post(awb_url, json=awb_payload, headers=headers)
+                    awb_data = awb_response.json()
+                    
+                    if awb_data.get("awb_assign_status") == 1:
+                         awb_resp_data = awb_data.get("response", {}).get("data", {})
+                         # Update response_data with AWB details so frontend sees it
+                         response_data["awb_code"] = awb_resp_data.get("awb_code")
+                         response_data["courier_name"] = awb_resp_data.get("courier_name")
+                         response_data["courier_company_id"] = awb_resp_data.get("courier_company_id")
+                         response_data["shipment_id"] = awb_resp_data.get("shipment_id") or shipment_id
+                except Exception as e:
+                    frappe.log_error(f"Failed to auto-generate AWB: {str(e)}", "Shiprocket AWB Error")
+
+            try:
+                doc = frappe.get_doc({
+                    "doctype": "Shiprocket Order",
+                    "order_id": str(response_data.get('order_id')),
+                    "shipment_id": str(response_data.get('shipment_id')),
+                    "status": response_data.get('status', 'Created'),
+                    "courier_name": response_data.get('courier_name'),
+                    "awb_code": response_data.get('awb_code'),
+                    "pickup_location": order_details.get('pickup_location'),
+                    "customer_name": order_details.get('billing_customer_name'),
+                    "customer_email": order_details.get('billing_email'),
+                    "customer_phone": order_details.get('billing_phone'),
+                    "full_payload": json.dumps(order_details, indent=2),
+                    "api_response": json.dumps(response_data, indent=2)
+                })
+                doc.insert(ignore_permissions=True)
+            except Exception as e:
+                frappe.log_error(f"Failed to save Shiprocket Order: {str(e)}")
+
+        return response_data
     except requests.exceptions.RequestException as e:
         frappe.log_error(f"Shiprocket Create Order Error: {str(e)}")
         try:

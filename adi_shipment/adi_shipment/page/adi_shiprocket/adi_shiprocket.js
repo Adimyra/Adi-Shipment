@@ -128,16 +128,19 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
         });
     }
 
+    // --- Page Load Logic ---
+    // (Removed Autofill from Delivery Note as requested)
+
     // --- Create Shipment Logic ---
     function render_create_shipment() {
         const $container = $('#create-shipment');
 
         let htmlContent = `
-        <div class="row">
-            <div class="col-md-8 offset-md-2">
-                <form id="order-details-form" style="background: #fff; padding: 20px; border: 1px solid #d1d8dd; border-radius: 4px;">
-                    <h4>Create Adhoc Order</h4>
-                    <hr>
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <form id="order-details-form" style="background: #fff; padding: 20px; border: 1px solid #d1d8dd; border-radius: 4px;">
+                <h4>Create Adhoc Order</h4>
+                <hr>
                     <div class="row">
                         <div class="col-md-6 form-group">
                             <label>Order ID *</label>
@@ -151,7 +154,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                     <div class="row">
                         <div class="col-md-6 form-group">
                             <label>Pickup Location</label>
-                            <input type="text" class="form-control" name="pickup_location" placeholder="e.g. Ranchi" value="Ranchi">
+                            <input type="text" class="form-control" name="pickup_location" placeholder="e.g. work" value="work">
                         </div>
                         <div class="col-md-6 form-group">
                             <label>Payment Method</label>
@@ -161,7 +164,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                             </select>
                         </div>
                     </div>
-                    
+
                     <h5 class="mt-3">Billing Details</h5>
                     <div class="row">
                         <div class="col-md-6 form-group">
@@ -307,10 +310,10 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                     <div class="form-group mt-3 text-right">
                         <button type="submit" class="btn btn-primary">Create Order</button>
                     </div>
-                </form>
-            </div>
+            </form>
         </div>
-        `;
+    </div>
+    `;
 
         $container.html(htmlContent);
 
@@ -322,30 +325,6 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                 $('#shipping-details').show();
             }
         });
-
-        // Autofill for testing (Delayed)
-        setTimeout(() => {
-            const now = new Date();
-            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-            $container.find('[name="order_date"]').val(now.toISOString().slice(0, 16));
-            $container.find('[name="order_id"]').val('ORD-' + Math.floor(Math.random() * 10000));
-            $container.find('[name="billing_customer_name"]').val('Test Customer');
-            $container.find('[name="billing_address"]').val('123 Test Street');
-            $container.find('[name="billing_city"]').val('Mumbai');
-            $container.find('[name="billing_pincode"]').val('400001');
-            $container.find('[name="billing_state"]').val('Maharashtra');
-            $container.find('[name="billing_email"]').val('test@example.com');
-            $container.find('[name="billing_phone"]').val('9999999999');
-            $container.find('[name="item_name"]').val('Test Item');
-            $container.find('[name="sku"]').val('TEST-SKU-001');
-            $container.find('[name="selling_price"]').val('100');
-            $container.find('[name="sub_total"]').val('100');
-            $container.find('[name="units"]').val('1');
-            $container.find('[name="length"]').val('10');
-            $container.find('[name="breadth"]').val('10');
-            $container.find('[name="height"]').val('10');
-            $container.find('[name="weight"]').val('0.5');
-        }, 500);
 
         $container.find('#order-details-form').on('submit', function (e) {
             e.preventDefault();
@@ -379,7 +358,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                 if (!data[key] || String(data[key]).trim() === "") {
                     frappe.msgprint({
                         title: 'Validation Error',
-                        message: `Please fill ${required[key]}`,
+                        message: `Please fill ${required[key]} `,
                         indicator: 'orange'
                     });
                     return;
@@ -419,7 +398,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                     if (!data[key] || String(data[key]).trim() === "") {
                         frappe.msgprint({
                             title: 'Validation Error',
-                            message: `Please fill ${shipping_required[key]}`,
+                            message: `Please fill ${shipping_required[key]} `,
                             indicator: 'orange'
                         });
                         return;
@@ -447,7 +426,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
             let payload = {
                 order_id: data.order_id,
                 order_date: data.order_date.replace("T", " ") + ":00", // Add seconds
-                pickup_location: data.pickup_location || "Ranchi",
+                pickup_location: data.pickup_location || "work",
                 billing_customer_name: data.billing_customer_name,
                 billing_last_name: data.billing_last_name,
                 billing_address: data.billing_address,
@@ -506,7 +485,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                     if (r.message && !r.message.error) {
                         frappe.msgprint({
                             title: 'Success',
-                            message: `Order Created Successfully!<br>Order ID: ${r.message.order_id}<br>Shipment ID: ${r.message.shipment_id}`,
+                            message: `Order Created Successfully! < br > Order ID: ${r.message.order_id} <br>Shipment ID: ${r.message.shipment_id}`,
                             indicator: 'green'
                         });
                         // Switch to dashboard to see it
@@ -534,26 +513,26 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                 <form id="rate-calc-form" style="background: #fff; padding: 20px; border: 1px solid #d1d8dd; border-radius: 4px;">
                     <h4>Rate Calculator</h4>
                     <hr>
-                    <div class="form-group">
-                        <label>Pickup Pincode *</label>
-                        <input type="number" class="form-control" name="pickup_postcode" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Delivery Pincode *</label>
-                        <input type="number" class="form-control" name="delivery_postcode" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Weight (kg) *</label>
-                        <input type="number" class="form-control" name="weight" value="0.5" step="0.01" required>
-                    </div>
-                    <div class="form-group">
-                        <label>COD (1=Yes, 0=No)</label>
-                        <select class="form-control" name="cod">
-                            <option value="0">No</option>
-                            <option value="1">Yes</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-block">Check Rates</button>
+                        <div class="form-group">
+                            <label>Pickup Pincode *</label>
+                            <input type="number" class="form-control" name="pickup_postcode" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Delivery Pincode *</label>
+                            <input type="number" class="form-control" name="delivery_postcode" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Weight (kg) *</label>
+                            <input type="number" class="form-control" name="weight" value="0.5" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>COD (1=Yes, 0=No)</label>
+                            <select class="form-control" name="cod">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Check Rates</button>
                 </form>
             </div>
             <div class="col-md-8">
@@ -630,4 +609,4 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
     $('#dashboard-tab').on('click', function () {
         render_dashboard();
     });
-}
+};

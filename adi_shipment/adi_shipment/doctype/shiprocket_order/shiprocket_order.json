@@ -1,0 +1,118 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "autoname": "field:order_id",
+    "creation": "2025-12-02 18:20:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "order_id",
+        "shipment_id",
+        "status",
+        "courier_name",
+        "awb_code",
+        "pickup_location",
+        "section_break_customer",
+        "customer_name",
+        "customer_email",
+        "customer_phone",
+        "section_break_data",
+        "full_payload",
+        "api_response"
+    ],
+    "fields": [
+        {
+            "fieldname": "order_id",
+            "fieldtype": "Data",
+            "label": "Order ID",
+            "reqd": 1,
+            "unique": 1
+        },
+        {
+            "fieldname": "shipment_id",
+            "fieldtype": "Data",
+            "label": "Shipment ID"
+        },
+        {
+            "fieldname": "status",
+            "fieldtype": "Data",
+            "label": "Status"
+        },
+        {
+            "fieldname": "courier_name",
+            "fieldtype": "Data",
+            "label": "Courier Name"
+        },
+        {
+            "fieldname": "awb_code",
+            "fieldtype": "Data",
+            "label": "AWB Code"
+        },
+        {
+            "fieldname": "pickup_location",
+            "fieldtype": "Data",
+            "label": "Pickup Location"
+        },
+        {
+            "fieldname": "section_break_customer",
+            "fieldtype": "Section Break",
+            "label": "Customer Details"
+        },
+        {
+            "fieldname": "customer_name",
+            "fieldtype": "Data",
+            "label": "Customer Name"
+        },
+        {
+            "fieldname": "customer_email",
+            "fieldtype": "Data",
+            "label": "Customer Email"
+        },
+        {
+            "fieldname": "customer_phone",
+            "fieldtype": "Data",
+            "label": "Customer Phone"
+        },
+        {
+            "fieldname": "section_break_data",
+            "fieldtype": "Section Break",
+            "label": "Data Logs"
+        },
+        {
+            "fieldname": "full_payload",
+            "fieldtype": "Code",
+            "label": "Full Payload",
+            "options": "JSON"
+        },
+        {
+            "fieldname": "api_response",
+            "fieldtype": "Code",
+            "label": "API Response",
+            "options": "JSON"
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2025-12-02 18:20:00.000000",
+    "modified_by": "Administrator",
+    "module": "Adi Shipment",
+    "name": "Shiprocket Order",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+}
