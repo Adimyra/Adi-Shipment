@@ -1,0 +1,83 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-03-10 11:52:41.583762",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "pickup_postcode",
+  "delivery_postcode",
+  "order_id",
+  "cod",
+  "weight",
+  "breadth",
+  "hieght"
+ ],
+ "fields": [
+  {
+   "fieldname": "pickup_postcode",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "pickup_postcode",
+   "reqd": 1
+  },
+  {
+   "fieldname": "delivery_postcode",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "delivery_postcode",
+   "reqd": 1
+  },
+  {
+   "fieldname": "order_id",
+   "fieldtype": "Int",
+   "label": "order_id"
+  },
+  {
+   "fieldname": "cod",
+   "fieldtype": "Int",
+   "label": "cod"
+  },
+  {
+   "fieldname": "weight",
+   "fieldtype": "Small Text",
+   "label": "weight"
+  },
+  {
+   "fieldname": "breadth",
+   "fieldtype": "Int",
+   "label": "breadth"
+  },
+  {
+   "fieldname": "hieght",
+   "fieldtype": "Int",
+   "label": "hieght"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-03-13 20:52:30.447883",
+ "modified_by": "Administrator",
+ "module": "Adi Shipment",
+ "name": "test",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

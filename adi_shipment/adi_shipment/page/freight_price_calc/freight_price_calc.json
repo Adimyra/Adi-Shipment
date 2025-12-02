@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2025-03-13 21:48:44.295932",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2025-03-13 21:48:44.295932",
+ "modified_by": "Administrator",
+ "module": "Adi Shipment",
+ "name": "freight-price-calc",
+ "owner": "Administrator",
+ "page_name": "freight-price-calc",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Freight-Price-Calc"
+}

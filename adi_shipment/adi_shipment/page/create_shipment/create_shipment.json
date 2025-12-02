@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2025-03-26 15:29:00.250911",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2025-03-26 15:29:00.250911",
+ "modified_by": "Administrator",
+ "module": "Adi Shipment",
+ "name": "create-shipment",
+ "owner": "Administrator",
+ "page_name": "create-shipment",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "create-shipment"
+}
