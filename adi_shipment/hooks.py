@@ -43,7 +43,7 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {"Delivery Note": "public/js/delivery_note.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -83,7 +83,7 @@ app_license = "mit"
 # ------------
 
 # before_install = "adi_shipment.install.before_install"
-# after_install = "adi_shipment.install.after_install"
+after_install = "adi_shipment.install.after_install"
 
 # Uninstallation
 # ------------
@@ -137,13 +137,11 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Delivery Note": {
+		"on_submit": "adi_shipment.api.shiprocket.create_shipment_after_submit"
+	}
+}
 
 # Scheduled Tasks
 # ---------------

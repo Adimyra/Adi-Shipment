@@ -1,0 +1,73 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2024-05-22 12:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "icon": "fa fa-truck",
+    "field_order": [
+        "email",
+        "password",
+        "section_break_token",
+        "token",
+        "token_expiry",
+        "generate_token"
+    ],
+    "fields": [
+        {
+            "fieldname": "email",
+            "fieldtype": "Data",
+            "label": "Email",
+            "reqd": 1
+        },
+        {
+            "fieldname": "password",
+            "fieldtype": "Password",
+            "label": "Password",
+            "reqd": 1
+        },
+        {
+            "fieldname": "section_break_token",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "token",
+            "fieldtype": "Data",
+            "label": "Token",
+            "read_only": 1
+        },
+        {
+            "fieldname": "token_expiry",
+            "fieldtype": "Datetime",
+            "label": "Token Expiry",
+            "read_only": 1
+        },
+        {
+            "fieldname": "generate_token",
+            "fieldtype": "Button",
+            "label": "Generate Token"
+        }
+    ],
+    "issingle": 1,
+    "links": [],
+    "modified": "2024-05-22 12:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Adi Shipment",
+    "name": "Shiprocket Settings",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "print": 1,
+            "read": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+}
