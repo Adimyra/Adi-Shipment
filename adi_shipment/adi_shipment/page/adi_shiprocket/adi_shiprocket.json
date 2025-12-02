@@ -1,0 +1,26 @@
+{
+    "content": [],
+    "creation": "2025-12-02 16:20:00.000000",
+    "docstatus": 0,
+    "doctype": "Page",
+    "idx": 0,
+    "modified": "2025-12-02 16:20:00.000000",
+    "modified_by": "Administrator",
+    "module": "Adi Shipment",
+    "name": "adi_shiprocket",
+    "owner": "Administrator",
+    "page_name": "adi_shiprocket",
+    "roles": [
+        {
+            "role": "System Manager"
+        },
+        {
+            "role": "Stock Manager"
+        },
+        {
+            "role": "Sales Manager"
+        }
+    ],
+    "standard": "Yes",
+    "title": "ADI Shiprocket"
+}

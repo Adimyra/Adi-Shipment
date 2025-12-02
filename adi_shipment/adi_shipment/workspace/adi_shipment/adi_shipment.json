@@ -72,9 +72,9 @@
         {
             "color": "Blue",
             "doc_view": "",
-            "icon": "fa fa-dashboard",
-            "label": "Shiprocket Dashboard",
-            "link_to": "shiprocket_dashboard",
+            "icon": "fa fa-rocket",
+            "label": "ADI Shiprocket",
+            "link_to": "adi_shiprocket",
             "stats_filter": "{}",
             "type": "Page",
             "url": ""
