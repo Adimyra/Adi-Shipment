@@ -151,7 +151,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                     <div class="row">
                         <div class="col-md-6 form-group">
                             <label>Pickup Location</label>
-                            <input type="text" class="form-control" name="pickup_location" placeholder="e.g. Primary" value="Primary">
+                            <input type="text" class="form-control" name="pickup_location" placeholder="e.g. Ranchi" value="Ranchi">
                         </div>
                         <div class="col-md-6 form-group">
                             <label>Payment Method</label>
@@ -447,7 +447,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
             let payload = {
                 order_id: data.order_id,
                 order_date: data.order_date.replace("T", " ") + ":00", // Add seconds
-                pickup_location: data.pickup_location || "Primary",
+                pickup_location: data.pickup_location || "Ranchi",
                 billing_customer_name: data.billing_customer_name,
                 billing_last_name: data.billing_last_name,
                 billing_address: data.billing_address,
