@@ -151,7 +151,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                     <div class="row">
                         <div class="col-md-6 form-group">
                             <label>Pickup Location</label>
-                            <input type="text" class="form-control" name="pickup_location" placeholder="e.g. Primary">
+                            <input type="text" class="form-control" name="pickup_location" placeholder="e.g. Primary" value="Primary">
                         </div>
                         <div class="col-md-6 form-group">
                             <label>Payment Method</label>
@@ -188,7 +188,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                         </div>
                         <div class="col-md-4 form-group">
                             <label>Pincode *</label>
-                            <input type="number" class="form-control" name="billing_pincode" required>
+                            <input type="text" class="form-control" name="billing_pincode" maxlength="6" required>
                         </div>
                         <div class="col-md-4 form-group">
                             <label>State *</label>
@@ -203,6 +203,60 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                         <div class="col-md-6 form-group">
                             <label>Phone *</label>
                             <input type="tel" class="form-control" name="billing_phone" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group mt-3">
+                        <div class="checkbox">
+                            <label>
+                                <input type="checkbox" name="shipping_is_billing" checked> Shipping Address is same as Billing Address
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="shipping-details" style="display:none;">
+                        <h5 class="mt-3">Shipping Details</h5>
+                        <div class="row">
+                            <div class="col-md-6 form-group">
+                                <label>First Name *</label>
+                                <input type="text" class="form-control" name="shipping_customer_name">
+                            </div>
+                            <div class="col-md-6 form-group">
+                                <label>Last Name</label>
+                                <input type="text" class="form-control" name="shipping_last_name">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Address Line 1 *</label>
+                            <input type="text" class="form-control" name="shipping_address">
+                        </div>
+                        <div class="form-group">
+                            <label>Address Line 2</label>
+                            <input type="text" class="form-control" name="shipping_address_2">
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 form-group">
+                                <label>City *</label>
+                                <input type="text" class="form-control" name="shipping_city">
+                            </div>
+                            <div class="col-md-4 form-group">
+                                <label>Pincode *</label>
+                                <input type="text" class="form-control" name="shipping_pincode" maxlength="6">
+                            </div>
+                            <div class="col-md-4 form-group">
+                                <label>State *</label>
+                                <input type="text" class="form-control" name="shipping_state">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 form-group">
+                                <label>Email *</label>
+                                <input type="email" class="form-control" name="shipping_email">
+                            </div>
+                            <div class="col-md-6 form-group">
+                                <label>Phone *</label>
+                                <input type="tel" class="form-control" name="shipping_phone">
+                            </div>
                         </div>
                     </div>
 
@@ -260,22 +314,38 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
 
         $container.html(htmlContent);
 
-        // Autofill for testing
-        const now = new Date();
-        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-        $container.find('[name="order_date"]').val(now.toISOString().slice(0, 16));
-        $container.find('[name="order_id"]').val('ORD-' + Math.floor(Math.random() * 10000));
-        $container.find('[name="billing_customer_name"]').val('Test Customer');
-        $container.find('[name="billing_address"]').val('123 Test Street');
-        $container.find('[name="billing_city"]').val('Mumbai');
-        $container.find('[name="billing_pincode"]').val('400001');
-        $container.find('[name="billing_state"]').val('Maharashtra');
-        $container.find('[name="billing_email"]').val('test@example.com');
-        $container.find('[name="billing_phone"]').val('9999999999');
-        $container.find('[name="item_name"]').val('Test Item');
-        $container.find('[name="sku"]').val('TEST-SKU-001');
-        $container.find('[name="selling_price"]').val('100');
-        $container.find('[name="sub_total"]').val('100');
+        // Toggle Shipping Details
+        $container.find('[name="shipping_is_billing"]').on('change', function () {
+            if ($(this).is(':checked')) {
+                $('#shipping-details').hide();
+            } else {
+                $('#shipping-details').show();
+            }
+        });
+
+        // Autofill for testing (Delayed)
+        setTimeout(() => {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            $container.find('[name="order_date"]').val(now.toISOString().slice(0, 16));
+            $container.find('[name="order_id"]').val('ORD-' + Math.floor(Math.random() * 10000));
+            $container.find('[name="billing_customer_name"]').val('Test Customer');
+            $container.find('[name="billing_address"]').val('123 Test Street');
+            $container.find('[name="billing_city"]').val('Mumbai');
+            $container.find('[name="billing_pincode"]').val('400001');
+            $container.find('[name="billing_state"]').val('Maharashtra');
+            $container.find('[name="billing_email"]').val('test@example.com');
+            $container.find('[name="billing_phone"]').val('9999999999');
+            $container.find('[name="item_name"]').val('Test Item');
+            $container.find('[name="sku"]').val('TEST-SKU-001');
+            $container.find('[name="selling_price"]').val('100');
+            $container.find('[name="sub_total"]').val('100');
+            $container.find('[name="units"]').val('1');
+            $container.find('[name="length"]').val('10');
+            $container.find('[name="breadth"]').val('10');
+            $container.find('[name="height"]').val('10');
+            $container.find('[name="weight"]').val('0.5');
+        }, 500);
 
         $container.find('#order-details-form').on('submit', function (e) {
             e.preventDefault();
@@ -283,31 +353,121 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
             let data = {};
             formData.forEach(item => data[item.name] = item.value);
 
+            // VALIDATION
+            const required = {
+                "order_id": "Order ID",
+                "order_date": "Order Date",
+                "billing_customer_name": "Billing First Name",
+                "billing_address": "Billing Address Line 1",
+                "billing_city": "Billing City",
+                "billing_pincode": "Billing Pincode",
+                "billing_state": "Billing State",
+                "billing_email": "Billing Email",
+                "billing_phone": "Billing Phone",
+                "item_name": "Item Name",
+                "sku": "SKU",
+                "units": "Units",
+                "selling_price": "Selling Price",
+                "sub_total": "Subtotal",
+                "length": "Length",
+                "breadth": "Breadth",
+                "height": "Height",
+                "weight": "Weight"
+            };
+
+            for (let key in required) {
+                if (!data[key] || String(data[key]).trim() === "") {
+                    frappe.msgprint({
+                        title: 'Validation Error',
+                        message: `Please fill ${required[key]}`,
+                        indicator: 'orange'
+                    });
+                    return;
+                }
+            }
+
+            if (data.billing_pincode.length !== 6) {
+                frappe.msgprint({
+                    title: 'Validation Error',
+                    message: "Billing Pincode must be 6 digits",
+                    indicator: 'orange'
+                });
+                return;
+            }
+            if (data.billing_phone.length < 10 || data.billing_phone.length > 15) {
+                frappe.msgprint({
+                    title: 'Validation Error',
+                    message: "Billing Phone must be between 10 and 15 digits",
+                    indicator: 'orange'
+                });
+                return;
+            }
+
+            const shipping_is_billing = $container.find('[name="shipping_is_billing"]').is(':checked');
+
+            if (!shipping_is_billing) {
+                const shipping_required = {
+                    "shipping_customer_name": "Shipping First Name",
+                    "shipping_address": "Shipping Address Line 1",
+                    "shipping_city": "Shipping City",
+                    "shipping_pincode": "Shipping Pincode",
+                    "shipping_state": "Shipping State",
+                    "shipping_email": "Shipping Email",
+                    "shipping_phone": "Shipping Phone"
+                };
+                for (let key in shipping_required) {
+                    if (!data[key] || String(data[key]).trim() === "") {
+                        frappe.msgprint({
+                            title: 'Validation Error',
+                            message: `Please fill ${shipping_required[key]}`,
+                            indicator: 'orange'
+                        });
+                        return;
+                    }
+                }
+                if (data.shipping_pincode.length !== 6) {
+                    frappe.msgprint({
+                        title: 'Validation Error',
+                        message: "Shipping Pincode must be 6 digits",
+                        indicator: 'orange'
+                    });
+                    return;
+                }
+                if (data.shipping_phone.length < 10 || data.shipping_phone.length > 15) {
+                    frappe.msgprint({
+                        title: 'Validation Error',
+                        message: "Shipping Phone must be between 10 and 15 digits",
+                        indicator: 'orange'
+                    });
+                    return;
+                }
+            }
+
             // Construct Payload
-            const payload = {
+            let payload = {
                 order_id: data.order_id,
-                order_date: data.order_date.replace("T", " "),
+                order_date: data.order_date.replace("T", " ") + ":00", // Add seconds
                 pickup_location: data.pickup_location || "Primary",
                 billing_customer_name: data.billing_customer_name,
                 billing_last_name: data.billing_last_name,
                 billing_address: data.billing_address,
                 billing_address_2: data.billing_address_2 || "",
                 billing_city: data.billing_city,
-                billing_pincode: data.billing_pincode,
+                billing_pincode: String(data.billing_pincode), // Ensure string
                 billing_state: data.billing_state,
                 billing_country: "India",
                 billing_email: data.billing_email,
                 billing_phone: data.billing_phone,
 
-                shipping_is_billing: 1,
+                shipping_is_billing: shipping_is_billing ? 1 : 0, // Must be INT 1 or 0
 
                 order_items: [{
                     name: data.item_name,
                     sku: data.sku,
                     units: parseInt(data.units) || 1,
                     selling_price: parseFloat(data.selling_price) || 0,
-                    discount: "",
-                    tax: "",
+                    discount: 0,
+                    tax: 0,
                     hsn: ""
                 }],
                 payment_method: data.payment_method,
@@ -317,6 +477,23 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                 height: parseFloat(data.height) || 10,
                 weight: parseFloat(data.weight) || 0.5
             };
+
+            if (!shipping_is_billing) {
+                payload.shipping_customer_name = data.shipping_customer_name;
+                payload.shipping_last_name = data.shipping_last_name;
+                payload.shipping_address = data.shipping_address;
+                payload.shipping_address_2 = data.shipping_address_2 || "";
+                payload.shipping_city = data.shipping_city;
+                payload.shipping_pincode = String(data.shipping_pincode); // Ensure string
+                payload.shipping_country = "India";
+                payload.shipping_state = data.shipping_state;
+                payload.shipping_email = data.shipping_email;
+                payload.shipping_phone = data.shipping_phone;
+            } else {
+                // Even if shipping_is_billing is 1, some users report better success sending the fields anyway.
+                // But strictly per API, we shouldn't need to. Let's stick to the user's request:
+                // "If the buyer’s shipping address is the same as the billing address, set shipping_is_billing to 1 (or "true") and do not send any shipping_* fields."
+            }
 
             console.log("Sending Payload:", payload);
 
