@@ -615,3 +615,10 @@ def update_tracking_status_job():
             frappe.log_error(f"Tracking Update Error for {s.name}: {str(e)}")
             
     frappe.db.commit()
+
+def validate_shiprocket_order(doc, method):
+    """Ensure Shiprocket Order is created before submitting Shipment"""
+    # If user wants to enforce Shiprocket order creation before submit
+    # Check if shipment_id is present
+    if not doc.shipment_id:
+        frappe.throw("Please create a Shiprocket Order before submitting the Shipment.")
