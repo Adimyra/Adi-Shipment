@@ -339,7 +339,12 @@ def create_order_from_shipment(shipment_name):
     sub_total = total_value
     
     # Check Shipment for explicit COD amount or Payment Method
-    if doc.get("cod_amount") and flt(doc.cod_amount) > 0:
+    # Use 'shipment_amount' as COD amount if available
+    if doc.get("payment_method") == "COD" or payment_method == "COD":
+        payment_method = "COD"
+        if doc.shipment_amount and doc.shipment_amount > 0:
+            sub_total = doc.shipment_amount
+    elif doc.get("cod_amount") and flt(doc.cod_amount) > 0:
         payment_method = "COD"
         sub_total = doc.cod_amount
     elif doc.get("payment_method"):
@@ -423,27 +428,61 @@ def get_courier_serviceability(shipment_name):
     if doc.delivery_address_name:
          addr = frappe.get_doc("Address", doc.delivery_address_name)
          delivery_pincode = addr.pincode
+    elif doc.delivery_pincode: # Fallback if saved on doc
+        delivery_pincode = doc.delivery_pincode
 
-    # Get Weight
+    # Get Weight & Dimensions
     weight = 0.5
+    length, breadth, height = 10, 10, 10
     if doc.shipment_parcel:
-        weight = doc.shipment_parcel[0].weight
+        p = doc.shipment_parcel[0]
+        weight = p.weight
+        length = p.length
+        breadth = p.width
+        height = p.height
+
+    # Pickup Pincode (Defaulting to Ranchi/Work for now, ideally fetch from Pickup Address)
+    pickup_pincode = "834001" 
+    if doc.pickup_address_name:
+         try:
+             addr = frappe.get_doc("Address", doc.pickup_address_name)
+             if addr.pincode:
+                 pickup_pincode = addr.pincode
+         except:
+             pass
+
+    # Determine Payment Method
+    payment_method = doc.payment_method or "Prepaid"
 
     params = {
-        "pickup_postcode": "834001", # Replace with your actual pickup pincode or fetch from Address
+        "pickup_postcode": pickup_pincode, 
         "delivery_postcode": delivery_pincode,
         "weight": weight,
-        "cod": 0 # Assuming Prepaid
+        "cod": 1 if payment_method == "COD" else 0
     }
     
-    # Fetch Pickup Address Pincode if possible
-    # if doc.pickup_address_name: ...
-
     url = "https://apiv2.shiprocket.in/v1/external/courier/serviceability/"
     headers = {"Authorization": f"Bearer {token}"}
     
-    response = requests.get(url, headers=headers, params=params)
-    return response.json()
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        data = response.json()
+        
+        # Return context + data
+        return {
+            "shiprocket_response": data,
+            "context": {
+                "weight": weight,
+                "dimensions": f"{length} x {breadth} x {height}",
+                "pickup_pincode": pickup_pincode,
+                "delivery_pincode": delivery_pincode,
+                "payment_method": payment_method,
+                "volumetric_weight": (float(length) * float(breadth) * float(height)) / 5000
+            }
+        }
+    except Exception as e:
+        frappe.log_error(f"Serviceability Error: {str(e)}")
+        return {"error": str(e)}
 
 @frappe.whitelist()
 def assign_awb_for_shipment(shipment_name, courier_company_id):
@@ -467,9 +506,17 @@ def assign_awb_for_shipment(shipment_name, courier_company_id):
     
     if data.get("awb_assign_status") == 1:
         resp = data.get("response", {}).get("data", {})
+        
+        # Update fields even if document is submitted
+        # db_set updates the database directly
         doc.db_set("awb_number", resp.get("awb_code"))
         doc.db_set("carrier", resp.get("courier_name"))
         doc.db_set("tracking_url", f"https://shiprocket.co/tracking/{resp.get('awb_code')}")
+        doc.db_set("tracking_status", "AWB Assigned")
+        
+        # Commit to ensure changes are saved immediately
+        frappe.db.commit()
+        
         return data
     else:
         frappe.throw(f"AWB Assignment Failed: {data.get('message')}")
@@ -499,8 +546,72 @@ def schedule_pickup_for_shipment(shipment_name):
         # frappe.throw(f"Pickup Schedule Failed: {json.dumps(data)}")
         return data # Return anyway to show message
 
-def create_shipment_after_submit(doc, method):
-    try:
-        create_shipment_from_dn(doc.name)
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Shiprocket Auto Create Failed")
+
+
+def set_payment_method(doc, method):
+    """Auto-set payment method based on linked Sales Invoice"""
+    if doc.payment_method:
+        return # Don't overwrite if already set manually
+
+    payment_method = "Prepaid" # Default
+    
+    if doc.shipment_delivery_note:
+        for link in doc.shipment_delivery_note:
+            dn_doc = frappe.get_doc("Delivery Note", link.delivery_note)
+            if dn_doc.is_return: continue
+
+            si_name = None
+            for item in dn_doc.items:
+                if item.against_sales_invoice:
+                    si_name = item.against_sales_invoice
+                    break
+            
+            if not si_name:
+                si_list = frappe.get_all("Sales Invoice Item", filters={"delivery_note": link.delivery_note}, fields=["parent"])
+                if si_list:
+                    si_name = si_list[0].parent
+            
+            if si_name:
+                si_status = frappe.db.get_value("Sales Invoice", si_name, "status")
+                if si_status in ["Unpaid", "Overdue", "Draft"]:
+                    payment_method = "COD"
+                elif si_status == "Paid":
+                    payment_method = "Prepaid"
+                break
+    
+    doc.payment_method = payment_method
+
+def update_tracking_status_job():
+    """Scheduled job to update tracking status for active shipments"""
+    # Fetch active shipments (Submitted, has AWB, not in final state)
+    shipments = frappe.get_all("Shipment", 
+        filters={
+            "docstatus": 1,
+            "awb_number": ["is", "set"],
+            "tracking_status": ["not in", ["Delivered", "Canceled", "RTO Delivered", "Lost", "Damaged"]]
+        },
+        fields=["name", "awb_number"]
+    )
+    
+    if not shipments:
+        return
+
+    token = get_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    for s in shipments:
+        try:
+            url = f"https://apiv2.shiprocket.in/v1/external/courier/track/awb/{s.awb_number}"
+            response = requests.get(url, headers=headers)
+            data = response.json()
+            
+            if data.get("tracking_data") and data["tracking_data"].get("track_status"):
+                status = data["tracking_data"]["track_status"]
+                
+                # Update status if changed
+                frappe.db.set_value("Shipment", s.name, "tracking_status", status)
+                
+        except Exception as e:
+            frappe.log_error(f"Tracking Update Error for {s.name}: {str(e)}")
+            
+    frappe.db.commit()

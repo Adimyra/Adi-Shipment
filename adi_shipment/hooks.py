@@ -99,6 +99,8 @@ after_install = "adi_shipment.install.after_install"
 # To set up dependencies/integrations with other apps
 # Name of the app being installed is passed as an argument
 
+after_migrate = "adi_shipment.install.after_install"
+
 # before_app_install = "adi_shipment.utils.before_app_install"
 # after_app_install = "adi_shipment.utils.after_app_install"
 
@@ -141,31 +143,19 @@ after_install = "adi_shipment.install.after_install"
 # Hook on document methods and events
 
 doc_events = {
-	"Delivery Note": {
-		"on_submit": "adi_shipment.api.shiprocket.create_shipment_after_submit"
-	}
+    "Shipment": {
+        "before_save": "adi_shipment.api.shiprocket.set_payment_method"
+    }
 }
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"adi_shipment.tasks.all"
-# 	],
-# 	"daily": [
-# 		"adi_shipment.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"adi_shipment.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"adi_shipment.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"adi_shipment.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"hourly": [
+		"adi_shipment.api.shiprocket.update_tracking_status_job"
+	]
+}
 
 # Testing
 # -------

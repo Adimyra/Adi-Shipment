@@ -58,132 +58,157 @@ frappe.ui.form.on('Shipment', {
 
 function open_courier_dialog(frm) {
     let d = new frappe.ui.Dialog({
-        title: 'Select Courier Partner',
+        title: 'Ship Order',
+        size: 'large', // Wider modal
         fields: [
             {
-                fieldname: 'courier_html',
+                fieldname: 'ui_html',
                 fieldtype: 'HTML'
             }
         ]
     });
 
     d.show();
-    d.get_field('courier_html').$wrapper.html('<div class="text-center text-muted p-4">Fetching best rates...</div>');
+    d.get_field('ui_html').$wrapper.html('<div class="text-center text-muted p-4">Fetching best rates...</div>');
 
     frappe.call({
         method: 'adi_shipment.api.shiprocket.get_courier_serviceability',
         args: { shipment_name: frm.doc.name },
         callback: function (r) {
-            if (r.message && r.message.data && r.message.data.available_courier_companies) {
-                let couriers = r.message.data.available_courier_companies;
+            if (r.message && r.message.shiprocket_response && r.message.shiprocket_response.data) {
+                let data = r.message.shiprocket_response.data;
+                let ctx = r.message.context || {};
+                let couriers = data.available_courier_companies || [];
 
-                // Sort by rate (cheapest first)
+                // Sort by rate
                 couriers.sort((a, b) => a.rate - b.rate);
 
-                let min_rate = couriers[0].rate;
-                let min_days = Math.min(...couriers.map(c => c.estimated_delivery_days));
+                let min_rate = couriers.length ? couriers[0].rate : 0;
+                let min_days = couriers.length ? Math.min(...couriers.map(c => c.estimated_delivery_days)) : 0;
 
                 let html = `
                     <style>
-                        .courier-table { width: 100%; border-collapse: separate; border-spacing: 0 10px; font-family: var(--font-stack); }
-                        .courier-row { 
-                            background: var(--card-bg, #fff); 
-                            box-shadow: 0 2px 5px rgba(0,0,0,0.05); 
-                            transition: all 0.2s ease; 
-                            border: 1px solid var(--border-color, #e5e7eb);
-                            border-radius: 8px;
+                        .sr-container { font-family: 'Inter', sans-serif; color: #1f2937; }
+                        
+                        /* Header Section */
+                        .sr-header { 
+                            display: flex; gap: 20px; padding: 15px; 
+                            background: #f9fafb; border-radius: 8px; margin-bottom: 20px;
+                            border: 1px solid #e5e7eb;
                         }
-                        .courier-row:hover { 
-                            transform: translateY(-2px); 
-                            box-shadow: 0 8px 15px rgba(0,0,0,0.1); 
-                            border-color: #2563eb;
+                        .sr-stat-group { flex: 1; }
+                        .sr-stat-label { font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: 600; margin-bottom: 4px; }
+                        .sr-stat-val { font-size: 14px; font-weight: 600; color: #111827; }
+                        .sr-stat-sub { font-size: 12px; color: #6b7280; }
+
+                        /* Courier List */
+                        .sr-list { max-height: 60vh; overflow-y: auto; padding-right: 5px; }
+                        .sr-card { 
+                            display: flex; align-items: center; 
+                            background: #fff; border: 1px solid #e5e7eb; 
+                            border-radius: 8px; padding: 15px; margin-bottom: 10px;
+                            transition: all 0.2s;
                         }
-                        .courier-cell { padding: 15px; vertical-align: middle; }
-                        .courier-logo {
-                            width: 45px; height: 45px; 
-                            background: #f3f4f6; 
-                            border-radius: 12px; 
-                            display: flex; align-items: center; justify-content: center; 
-                            font-weight: 700; font-size: 18px; color: #4b5563;
-                            margin-right: 15px;
+                        .sr-card:hover { border-color: #7c3aed; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.1); }
+                        
+                        .sr-logo { 
+                            width: 40px; height: 40px; background: #f3f4f6; 
+                            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+                            font-weight: 700; color: #4b5563; margin-right: 15px; font-size: 16px;
                         }
-                        .courier-name { font-weight: 600; font-size: 16px; color: var(--text-color); margin-bottom: 4px; }
-                        .courier-meta { font-size: 12px; color: var(--text-muted); }
-                        .courier-rating { 
-                            background: #fffbeb; color: #d97706; 
-                            padding: 4px 8px; border-radius: 6px; 
-                            font-weight: 600; font-size: 13px;
-                            display: inline-flex; align-items: center; gap: 4px;
+                        .sr-info { flex: 2; }
+                        .sr-name { font-weight: 600; font-size: 15px; margin-bottom: 2px; }
+                        .sr-meta { font-size: 12px; color: #6b7280; }
+                        
+                        .sr-metric { flex: 1; text-align: center; }
+                        .sr-metric-val { font-weight: 600; font-size: 14px; }
+                        .sr-metric-lbl { font-size: 11px; color: #6b7280; }
+                        
+                        .sr-price { flex: 1; text-align: right; font-size: 18px; font-weight: 700; color: #059669; margin-right: 20px; }
+                        
+                        .sr-btn { 
+                            background: #7c3aed; color: white; border: none; 
+                            padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 13px;
+                            cursor: pointer; transition: background 0.2s;
                         }
-                        .courier-price { font-weight: 700; font-size: 18px; color: #059669; }
-                        .btn-ship { 
-                            background: #2563eb; color: white; 
-                            border: none; padding: 8px 20px; 
-                            border-radius: 8px; cursor: pointer; 
-                            font-weight: 600; font-size: 14px;
-                            transition: background 0.2s;
+                        .sr-btn:hover { background: #6d28d9; }
+
+                        .sr-badge { 
+                            display: inline-block; padding: 2px 6px; border-radius: 4px; 
+                            font-size: 10px; font-weight: 700; text-transform: uppercase; margin-left: 6px; 
                         }
-                        .btn-ship:hover { background: #1d4ed8; }
-                        .badge { 
-                            padding: 2px 8px; border-radius: 12px; 
-                            font-size: 10px; font-weight: 700; text-transform: uppercase; 
-                            margin-left: 8px; vertical-align: middle;
-                        }
-                        .badge-cheap { background: #dbeafe; color: #1e40af; }
-                        .badge-fast { background: #d1fae5; color: #065f46; }
+                        .bg-blue { background: #dbeafe; color: #1e40af; }
+                        .bg-green { background: #d1fae5; color: #065f46; }
+                        .bg-yellow { background: #fffbeb; color: #b45309; }
                     </style>
-                    <div style="max-height: 500px; overflow-y: auto; padding: 5px;">
-                        <table class="courier-table">
-                            <tbody>
+
+                    <div class="sr-container">
+                        <!-- Summary Header -->
+                        <div class="sr-header">
+                            <div class="sr-stat-group">
+                                <div class="sr-stat-label">Package Weight</div>
+                                <div class="sr-stat-val">${ctx.weight} kg</div>
+                                <div class="sr-stat-sub">Volumetric: ${ctx.volumetric_weight ? ctx.volumetric_weight.toFixed(3) : '-'} kg</div>
+                            </div>
+                            <div class="sr-stat-group">
+                                <div class="sr-stat-label">Dimensions (LxWxH)</div>
+                                <div class="sr-stat-val">${ctx.dimensions} cm</div>
+                            </div>
+                            <div class="sr-stat-group">
+                                <div class="sr-stat-label">Payment Mode</div>
+                                <div class="sr-stat-val">${ctx.payment_method}</div>
+                            </div>
+                            <div class="sr-stat-group">
+                                <div class="sr-stat-label">Pincodes</div>
+                                <div class="sr-stat-val">${ctx.pickup_pincode} &rarr; ${ctx.delivery_pincode}</div>
+                            </div>
+                        </div>
+
+                        <!-- Courier List -->
+                        <div class="sr-list">
                 `;
 
-                couriers.forEach((c) => {
-                    let badges = '';
-                    if (c.rate === min_rate) badges += `<span class="badge badge-cheap">Cheapest</span>`;
-                    if (c.estimated_delivery_days === min_days) badges += `<span class="badge badge-fast">Fastest</span>`;
+                if (couriers.length === 0) {
+                    html += `<div class="text-center text-muted p-4">No couriers available for this route.</div>`;
+                } else {
+                    couriers.forEach(c => {
+                        let badges = '';
+                        if (c.rate === min_rate) badges += `<span class="sr-badge bg-blue">Cheapest</span>`;
+                        if (c.estimated_delivery_days === min_days) badges += `<span class="sr-badge bg-green">Fastest</span>`;
 
-                    let logo_char = c.courier_name.charAt(0).toUpperCase();
+                        let logo = c.courier_name.charAt(0).toUpperCase();
 
-                    html += `
-                        <tr class="courier-row">
-                            <td class="courier-cell" style="border-top-left-radius: 8px; border-bottom-left-radius: 8px; width: 40%;">
-                                <div style="display: flex; align-items: center;">
-                                    <div class="courier-logo">${logo_char}</div>
-                                    <div>
-                                        <div class="courier-name">${c.courier_name} ${badges}</div>
-                                        <div class="courier-meta">ID: ${c.courier_company_id}</div>
+                        html += `
+                            <div class="sr-card">
+                                <div class="sr-logo">${logo}</div>
+                                <div class="sr-info">
+                                    <div class="sr-name">${c.courier_name} ${badges}</div>
+                                    <div class="sr-meta">ID: ${c.courier_company_id} | ${c.courier_name} Surface</div>
+                                </div>
+                                <div class="sr-metric">
+                                    <div class="sr-metric-val">${c.estimated_delivery_days} Days</div>
+                                    <div class="sr-metric-lbl">Estimated Time</div>
+                                </div>
+                                <div class="sr-metric">
+                                    <div class="sr-metric-val">
+                                        <span class="sr-badge bg-yellow" style="margin:0;">★ ${c.rating}</span>
                                     </div>
+                                    <div class="sr-metric-lbl">Rating</div>
                                 </div>
-                            </td>
-                            <td class="courier-cell" style="text-align: center;">
-                                <div style="font-weight: 600;">${c.estimated_delivery_days} Days</div>
-                                <div class="courier-meta">Delivery Time</div>
-                            </td>
-                            <td class="courier-cell" style="text-align: center;">
-                                <div class="courier-rating">
-                                    <svg width="12" height="12" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-                                    ${c.rating}
-                                </div>
-                            </td>
-                            <td class="courier-cell" style="text-align: right;">
-                                <div class="courier-price">₹${c.rate}</div>
-                            </td>
-                            <td class="courier-cell" style="border-top-right-radius: 8px; border-bottom-right-radius: 8px; text-align: right;">
-                                <button class="btn-ship" data-id="${c.courier_company_id}">
-                                    Ship Now
-                                </button>
-                            </td>
-                        </tr>
-                    `;
-                });
+                                <div class="sr-price">₹${c.rate}</div>
+                                <button class="sr-btn" data-id="${c.courier_company_id}">Ship Now</button>
+                            </div>
+                        `;
+                    });
+                }
 
-                html += `</tbody></table></div>`;
+                html += `</div></div>`; // Close list and container
 
-                let $wrapper = d.get_field('courier_html').$wrapper;
+                let $wrapper = d.get_field('ui_html').$wrapper;
                 $wrapper.html(html);
 
-                // Bind Click Event
-                $wrapper.find('.btn-ship').on('click', function () {
+                // Bind Click
+                $wrapper.find('.sr-btn').on('click', function () {
                     let courier_id = $(this).data('id');
                     frappe.call({
                         method: 'adi_shipment.api.shiprocket.assign_awb_for_shipment',
@@ -204,7 +229,8 @@ function open_courier_dialog(frm) {
                 });
 
             } else {
-                d.get_field('courier_html').$wrapper.html('<div class="text-center text-danger p-4">No couriers available. Check address/weight.</div>');
+                let msg = r.message && r.message.error ? r.message.error : "No couriers available.";
+                d.get_field('ui_html').$wrapper.html(`<div class="text-center text-danger p-4">${msg}</div>`);
             }
         }
     });
