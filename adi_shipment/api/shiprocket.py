@@ -187,6 +187,18 @@ def create_shipment_from_dn(dn_name, package_details=None):
             frappe.log_error(f"Failed to generate AWB for {dn.name}: {str(e)}", "Shiprocket AWB Error")
 
     return data
+def get_pickup_locations(token):
+    url = "https://apiv2.shiprocket.in/v1/external/settings/company/pickup"
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        if data.get("data") and data.get("shipping_address"):
+             return data.get("shipping_address")
+        return []
+    except:
+        return []
+
 @frappe.whitelist()
 def create_order_from_shipment(shipment_name):
     doc = frappe.get_doc("Shipment", shipment_name)
@@ -215,12 +227,26 @@ def create_order_from_shipment(shipment_name):
     
     items = list(sku_map.values())
     
+    if not items:
+        frappe.throw("No items found in Shipment or linked Delivery Notes. Cannot create Shiprocket order.")
+
     # 2. Address Details
     # Pickup
     pickup_location = "work" # Default
+    
+    # Fetch valid pickup locations from Shiprocket to avoid "Invalid Data" error
+    try:
+        valid_locations = get_pickup_locations(token)
+        valid_aliases = [loc.get("pickup_location") for loc in valid_locations]
+        
+        if pickup_location not in valid_aliases and valid_aliases:
+            pickup_location = valid_aliases[0] # Use first available if default not found
+            frappe.msgprint(f"Default pickup location 'work' not found. Using '{pickup_location}' instead.")
+    except Exception as e:
+        frappe.log_error(f"Failed to fetch pickup locations: {str(e)}", "Shiprocket Warning")
+
     if doc.pickup_address_name:
-        # You might need to map this to Shiprocket Pickup Location Alias
-        # For now, defaulting to 'work' or user's default
+        # Future: Map this to Shiprocket Pickup Location Alias
         pass
 
     # Delivery
@@ -318,6 +344,10 @@ def create_order_from_shipment(shipment_name):
         # If it starts with 91 and is longer than 10 digits, remove 91
         if len(delivery_phone) > 10 and delivery_phone.startswith('91'):
             delivery_phone = delivery_phone[2:]
+        
+        # If still too long (e.g. concatenated ID), take last 10 digits
+        if len(delivery_phone) > 10:
+            delivery_phone = delivery_phone[-10:]
             
     # Final Fallback to the genuine company number provided
     if not delivery_phone or len(delivery_phone) < 10:
@@ -364,8 +394,8 @@ def create_order_from_shipment(shipment_name):
     payload = {
         "order_id": doc.name,
         "order_date": str(doc.creation),
-        "pickup_location": "work", # Ensure this matches your Shiprocket Config
-        "billing_customer_name": delivery_name,
+        "pickup_location": pickup_location, # Ensure this matches your Shiprocket Config
+        "billing_customer_name": delivery_name[:50], # Truncate to 50 chars
         "billing_last_name": "",
         "billing_address": delivery_address[:50],
         "billing_address_2": delivery_address[50:100] if len(delivery_address) > 50 else "",
@@ -391,12 +421,19 @@ def create_order_from_shipment(shipment_name):
         "Authorization": f"Bearer {token}"
     }
 
+    # Log Payload for Debugging
+    frappe.log_error(message=json.dumps(payload), title=f"Shiprocket Payload {doc.name}")
+
     try:
         response = requests.post(url, json=payload, headers=headers)
         data = response.json()
         
         if response.status_code not in [200, 201] or not data.get("order_id"):
              error_msg = data.get('message', response.text)
+             if isinstance(error_msg, dict):
+                 error_msg = json.dumps(error_msg)
+             
+             frappe.log_error(f"Shiprocket API Error: {error_msg}\nPayload: {json.dumps(payload)}", "Shiprocket Error")
              frappe.throw(f"Shiprocket Error: {error_msg}")
 
         # Success - Save IDs

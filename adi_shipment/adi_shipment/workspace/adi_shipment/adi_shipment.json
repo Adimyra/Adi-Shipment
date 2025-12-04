@@ -1,94 +1,97 @@
 {
-    "charts": [],
-    "content": "[{\"id\":\"IVdRiI4YRp\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Shiprocket Integration</span>\",\"col\":12}},{\"id\":\"-gL2fNdM35\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Delivery Note\",\"col\":4}},{\"id\":\"e_-nfrKGF8\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Shiprocket Settings\",\"col\":3}}]",
-    "creation": "2024-12-02 14:20:00",
-    "custom_blocks": [],
-    "docstatus": 0,
-    "doctype": "Workspace",
-    "hide_custom": 0,
-    "icon": "box",
-    "idx": 0,
-    "indicator_color": "",
-    "is_hidden": 0,
-    "label": "Adi Shipment",
-    "links": [
-        {
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "Shiprocket Settings",
-            "link_count": 0,
-            "link_to": "Shiprocket Settings",
-            "link_type": "DocType",
-            "onboard": 1,
-            "type": "Link"
-        },
-        {
-            "hidden": 0,
-            "is_query_report": 0,
-            "label": "Delivery Note",
-            "link_count": 0,
-            "link_to": "Delivery Note",
-            "link_type": "DocType",
-            "onboard": 0,
-            "type": "Link"
-        }
-    ],
-    "modified": "2025-12-02 14:54:00.515404",
-    "modified_by": "Administrator",
-    "module": "Adi Shipment",
-    "name": "Adi Shipment",
-    "number_cards": [],
-    "owner": "Administrator",
-    "parent_page": "",
-    "public": 1,
-    "quick_lists": [],
-    "roles": [
-        {
-            "role": "System Manager"
-        },
-        {
-            "role": "Stock Manager"
-        }
-    ],
-    "sequence_id": 1.0,
-    "shortcuts": [
-        {
-            "color": "Grey",
-            "doc_view": "List",
-            "label": "Shiprocket Settings",
-            "link_to": "Shiprocket Settings",
-            "type": "DocType"
-        },
-        {
-            "color": "Grey",
-            "doc_view": "",
-            "icon": "",
-            "label": "Delivery Note",
-            "link_to": "Delivery Note",
-            "stats_filter": "{}",
-            "type": "DocType",
-            "url": ""
-        },
-        {
-            "color": "Blue",
-            "doc_view": "",
-            "icon": "fa fa-rocket",
-            "label": "ADI Shiprocket",
-            "link_to": "adi_shiprocket",
-            "stats_filter": "{}",
-            "type": "Page",
-            "url": ""
-        },
-        {
-            "color": "Green",
-            "doc_view": "List",
-            "icon": "fa fa-list",
-            "label": "Shiprocket Orders",
-            "link_to": "Shiprocket Order",
-            "stats_filter": "{}",
-            "type": "DocType",
-            "url": ""
-        }
-    ],
-    "title": "Adi Shipment"
+ "charts": [],
+ "content": "[{\"id\":\"IVdRiI4YRp\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Shiprocket Integration</span>\",\"col\":12}},{\"id\":\"-gL2fNdM35\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Delivery Note\",\"col\":4}},{\"id\":\"I2oDCknPYf\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"MAJLWcVJiy\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Shipment\",\"col\":3}},{\"id\":\"e_-nfrKGF8\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Shiprocket Settings\",\"col\":3}},{\"id\":\"US3K0NplF4\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Pages</b></span>\",\"col\":12}},{\"id\":\"VRcl3Gcb70\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Adi Shiprocket\",\"col\":3}},{\"id\":\"hvskwbCb8I\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Dashboard\",\"col\":3}}]",
+ "creation": "2024-12-02 14:20:00",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "dashboard-list",
+ "idx": 0,
+ "indicator_color": "",
+ "is_hidden": 0,
+ "label": "Adi Shipment",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Shiprocket Settings",
+   "link_count": 0,
+   "link_to": "Shiprocket Settings",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery Note",
+   "link_count": 0,
+   "link_to": "Delivery Note",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2025-12-04 11:53:50.886825",
+ "modified_by": "Administrator",
+ "module": "Adi Shipment",
+ "name": "Adi Shipment",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Stock Manager"
+  }
+ ],
+ "sequence_id": 1.0,
+ "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Shipment",
+   "link_to": "Shipment",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Shiprocket Settings",
+   "link_to": "Shiprocket Settings",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "",
+   "icon": "",
+   "label": "Delivery Note",
+   "link_to": "Delivery Note",
+   "stats_filter": "{}",
+   "type": "DocType",
+   "url": ""
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Adi Shiprocket",
+   "link_to": "adi_shiprocket",
+   "type": "Page"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Dashboard",
+   "link_to": "shiprocket_dashboard",
+   "type": "Page"
+  }
+ ],
+ "title": "Adi Shipment"
 }
