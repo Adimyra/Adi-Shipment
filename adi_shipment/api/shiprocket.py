@@ -522,7 +522,8 @@ def get_courier_serviceability(shipment_name):
         return {"error": str(e)}
 
 @frappe.whitelist()
-def assign_awb_for_shipment(shipment_name, courier_company_id):
+@frappe.whitelist()
+def assign_awb_for_shipment(shipment_name, courier_company_id, amount=0):
     doc = frappe.get_doc("Shipment", shipment_name)
     token = get_token()
     
@@ -549,7 +550,12 @@ def assign_awb_for_shipment(shipment_name, courier_company_id):
         doc.db_set("awb_number", resp.get("awb_code"))
         doc.db_set("carrier", resp.get("courier_name"))
         doc.db_set("tracking_url", f"https://shiprocket.co/tracking/{resp.get('awb_code')}")
-        doc.db_set("tracking_status", "AWB Assigned")
+        doc.db_set("tracking_status", "In Progress")
+        
+        if amount and float(amount) > 0:
+            doc.db_set("shipment_amount", float(amount))
+        doc.db_set("tracking_url", f"https://shiprocket.co/tracking/{resp.get('awb_code')}")
+        doc.db_set("tracking_status", "In Progress")
         
         # Commit to ensure changes are saved immediately
         frappe.db.commit()

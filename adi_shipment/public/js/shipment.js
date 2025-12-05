@@ -196,7 +196,7 @@ function open_courier_dialog(frm) {
                                     <div class="sr-metric-lbl">Rating</div>
                                 </div>
                                 <div class="sr-price">₹${c.rate}</div>
-                                <button class="sr-btn" data-id="${c.courier_company_id}">Ship Now</button>
+                                <button class="sr-btn" data-id="${c.courier_company_id}" data-rate="${c.rate}">Ship Now</button>
                             </div>
                         `;
                     });
@@ -210,15 +210,17 @@ function open_courier_dialog(frm) {
                 // Bind Click
                 $wrapper.find('.sr-btn').on('click', function () {
                     let courier_id = $(this).data('id');
+                    let rate = $(this).data('rate');
                     frappe.call({
                         method: 'adi_shipment.api.shiprocket.assign_awb_for_shipment',
                         args: {
                             shipment_name: frm.doc.name,
-                            courier_company_id: courier_id
+                            courier_company_id: courier_id,
+                            amount: rate
                         },
                         freeze: true,
                         freeze_message: "Assigning AWB...",
-                        callback(r) {
+                        callback: function (r) {
                             if (!r.exc) {
                                 d.hide();
                                 frappe.msgprint("AWB Assigned Successfully!");
