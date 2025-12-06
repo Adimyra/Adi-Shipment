@@ -145,7 +145,7 @@ after_migrate = "adi_shipment.install.after_install"
 doc_events = {
     "Shipment": {
         "before_save": "adi_shipment.api.shiprocket.set_payment_method",
-        "on_submit": "adi_shipment.api.shiprocket.validate_shiprocket_order"
+        "on_submit": "adi_shipment.api.shiprocket.validate_shiprocket_order", "on_cancel": "adi_shipment.api.shiprocket.cancel_shiprocket_order"
     }
 }
 

@@ -549,6 +549,8 @@ def assign_awb_for_shipment(shipment_name, courier_company_id, amount=0):
         # db_set updates the database directly
         doc.db_set("awb_number", resp.get("awb_code"))
         doc.db_set("carrier", resp.get("courier_name"))
+        doc.db_set("service_provider", "Shiprocket")
+        doc.db_set("carrier_service", resp.get("courier_name"))
         doc.db_set("tracking_url", f"https://shiprocket.co/tracking/{resp.get('awb_code')}")
         doc.db_set("tracking_status", "In Progress")
         
@@ -665,3 +667,60 @@ def validate_shiprocket_order(doc, method):
     # Check if shipment_id is present
     if not doc.shipment_id:
         frappe.throw("Please create a Shiprocket Order before submitting the Shipment.")
+
+def cancel_shiprocket_order(doc, method):
+    """Cancel Shiprocket Order when Shipment is cancelled"""
+    if doc.get("service_provider") != "Shiprocket":
+        return
+
+    token = get_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Cancel AWB if exists
+    if doc.awb_number:
+        try:
+            awb_url = "https://apiv2.shiprocket.in/v1/external/courier/generate/awb/cancel"
+            awb_payload = {"awbs": [doc.awb_number]}
+            awb_response = requests.post(awb_url, json=awb_payload, headers=headers)
+            if awb_response.status_code == 200:
+                frappe.msgprint(f"AWB {doc.awb_number} cancellation requested.")
+        except Exception as e:
+            frappe.log_error(f"AWB Cancel Error: {str(e)}")
+
+    # 2. Get Shiprocket Order ID
+    shiprocket_order_id = doc.get("shiprocket_order_id")
+    
+    if not shiprocket_order_id:
+        # Try fetching from Shiprocket using the Shipment Name
+        try:
+            search_url = "https://apiv2.shiprocket.in/v1/external/orders"
+            search_params = {"custom_order_id": doc.name} 
+            search_resp = requests.get(search_url, headers=headers, params=search_params)
+            search_data = search_resp.json()
+            
+            if search_data.get("data") and len(search_data["data"]) > 0:
+                shiprocket_order_id = search_data["data"][0].get("id")
+        except Exception as e:
+            frappe.log_error(f"Fetch Order ID Error: {str(e)}")
+
+    if not shiprocket_order_id:
+        frappe.msgprint("Could not find Shiprocket Order ID to cancel.")
+        return
+
+    # 3. Cancel Order
+    url = "https://apiv2.shiprocket.in/v1/external/orders/cancel"
+    payload = {"ids": [shiprocket_order_id]}
+
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        data = response.json()
+        
+        if response.status_code in [200, 201]:
+             frappe.msgprint(f"Shiprocket Order {shiprocket_order_id} has been cancelled successfully.")
+             doc.db_set("tracking_status", "Canceled")
+        else:
+             frappe.msgprint(f"Warning: Failed to cancel Shiprocket Order: {data.get('message')}")
+             
+    except Exception as e:
+        frappe.log_error(f"Shiprocket Cancel Error: {str(e)}")
+        frappe.msgprint(f"Warning: API Error while cancelling Shiprocket Order. Please check logs.")

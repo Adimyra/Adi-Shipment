@@ -1,39 +1,46 @@
 frappe.ui.form.on('Shipment', {
     refresh: function (frm) {
-        // Add Shiprocket buttons only if document is saved
-        if (!frm.is_new()) {
+        // Only show actions if document is saved and not submitted
+        if (!frm.is_new() && frm.doc.docstatus === 0) {
 
-            // 1. Create Order (Show if no Shipment ID)
-            if (!frm.doc.shipment_id) {
-                frm.add_custom_button('Create Shiprocket Order', function () {
-                    frappe.call({
-                        method: 'adi_shipment.api.shiprocket.create_order_from_shipment',
-                        args: { shipment_name: frm.doc.name },
-                        freeze: true,
-                        freeze_message: "Creating Order in Shiprocket...",
-                        callback: function (r) {
-                            if (!r.exc) {
-                                frappe.msgprint("Order Created Successfully!");
-                                frm.reload_doc();
-                                // Auto-trigger Ship Now
-                                setTimeout(() => {
-                                    open_courier_dialog(frm);
-                                }, 1000);
+            // If no AWB, show "Ship Now" to start the process
+            if (!frm.doc.awb_number) {
+                frm.add_custom_button('Ship Now', function () {
+                    // Step 1: Mode Selection
+                    let d = new frappe.ui.Dialog({
+                        title: 'Select Shipment Mode',
+                        fields: [
+                            {
+                                label: 'Shipment Mode',
+                                fieldname: 'mode',
+                                fieldtype: 'Select',
+                                options: [
+                                    { "label": "Shiprocket Integration", "value": "Shiprocket" },
+                                    { "label": "Manual", "value": "Manual" }
+                                ],
+                                default: 'Shiprocket',
+                                description: "Select 'Shiprocket' to fetch rates and automate shipping. Select 'Manual' to enter details yourself."
+                            }
+                        ],
+                        primary_action_label: 'Proceed',
+                        primary_action: function (values) {
+                            d.hide();
+                            if (values.mode === 'Shiprocket') {
+                                open_courier_dialog(frm);
+                            } else {
+                                open_manual_shipping_dialog(frm);
                             }
                         }
                     });
-                }, "Shiprocket");
+                    d.show();
+                }).addClass("btn-primary");
             }
+        }
 
-            // 2. Assign AWB (If Shipment ID exists but No AWB)
-            else if (frm.doc.shipment_id && !frm.doc.awb_number) {
-                frm.add_custom_button('Ship Now (Select Courier)', function () {
-                    open_courier_dialog(frm);
-                }, "Shiprocket");
-            }
-
-            // 3. Schedule Pickup (If AWB Assigned)
-            else if (frm.doc.awb_number) {
+        // Actions for Active Shipments (Submitted or Draft with AWB)
+        if (frm.doc.awb_number) {
+            // Shiprocket specific actions
+            if (frm.doc.service_provider === "Shiprocket") {
                 frm.add_custom_button('Schedule Pickup', function () {
                     frappe.call({
                         method: 'adi_shipment.api.shiprocket.schedule_pickup_for_shipment',
@@ -46,20 +53,94 @@ frappe.ui.form.on('Shipment', {
                             }
                         }
                     });
-                }, "Shiprocket");
-
-                frm.add_custom_button('Track Shipment', function () {
-                    window.open("https://app.shiprocket.in/tracking/" + frm.doc.awb_number, "_blank");
-                }, "Shiprocket");
+                }, "Shiprocket Action");
             }
+
+            frm.add_custom_button('Track Shipment', function () {
+                if (frm.doc.tracking_url) {
+                    window.open(frm.doc.tracking_url, "_blank");
+                } else {
+                    window.open("https://app.shiprocket.in/tracking/" + frm.doc.awb_number, "_blank");
+                }
+            }, "Shiprocket Action");
         }
     }
 });
 
+function open_manual_shipping_dialog(frm) {
+    let d = new frappe.ui.Dialog({
+        title: 'Manual Shipment Details',
+        fields: [
+            {
+                label: 'Service Provider',
+                fieldname: 'service_provider',
+                fieldtype: 'Read Only',
+                default: 'Manual'
+            },
+            {
+                label: 'Carrier',
+                fieldname: 'carrier',
+                fieldtype: 'Data',
+                reqd: 1
+            },
+            {
+                label: 'Carrier Service',
+                fieldname: 'carrier_service',
+                fieldtype: 'Data'
+            },
+            {
+                label: 'Shipment ID',
+                fieldname: 'shipment_id',
+                fieldtype: 'Data'
+            },
+            {
+                label: 'Tracking / AWB Number',
+                fieldname: 'awb_number',
+                fieldtype: 'Data',
+                reqd: 1
+            },
+            {
+                label: 'Shipment Amount',
+                fieldname: 'shipment_amount',
+                fieldtype: 'Currency',
+                reqd: 1
+            },
+            {
+                label: 'Tracking Status',
+                fieldname: 'tracking_status',
+                fieldtype: 'Select',
+                options: ["In Progress", "Delivered", "Returned", "Lost", "Canceled"],
+                default: "In Progress",
+                reqd: 1
+            }
+        ],
+        primary_action_label: 'Save & Submit',
+        primary_action: function (values) {
+            d.hide();
+
+            // Set values on the form
+            frm.set_value('service_provider', 'Manual');
+            frm.set_value('carrier', values.carrier);
+            frm.set_value('carrier_service', values.carrier_service);
+            frm.set_value('shipment_id', values.shipment_id);
+            frm.set_value('awb_number', values.awb_number);
+            frm.set_value('shipment_amount', values.shipment_amount);
+            frm.set_value('tracking_status', values.tracking_status);
+
+            // Save and Submit
+            frm.save().then(() => {
+                frappe.msgprint("Shipment details saved. Submitting...");
+                frm.savesubmit();
+            });
+        }
+    });
+    d.show();
+}
+
 function open_courier_dialog(frm) {
     let d = new frappe.ui.Dialog({
-        title: 'Ship Order',
-        size: 'large', // Wider modal
+        title: 'Shiprocket: Select Courier',
+        size: 'large',
         fields: [
             {
                 fieldname: 'ui_html',
@@ -69,7 +150,7 @@ function open_courier_dialog(frm) {
     });
 
     d.show();
-    d.get_field('ui_html').$wrapper.html('<div class="text-center text-muted p-4">Fetching best rates...</div>');
+    d.get_field('ui_html').$wrapper.html('<div class="text-center text-muted p-4">Fetching best rates from Shiprocket...</div>');
 
     frappe.call({
         method: 'adi_shipment.api.shiprocket.get_courier_serviceability',
@@ -143,7 +224,6 @@ function open_courier_dialog(frm) {
                     </style>
 
                     <div class="sr-container">
-                        <!-- Summary Header -->
                         <div class="sr-header">
                             <div class="sr-stat-group">
                                 <div class="sr-stat-label">Package Weight</div>
@@ -159,12 +239,11 @@ function open_courier_dialog(frm) {
                                 <div class="sr-stat-val">${ctx.payment_method}</div>
                             </div>
                             <div class="sr-stat-group">
-                                <div class="sr-stat-label">Pincodes</div>
+                                <div class="sr-stat-label">Route</div>
                                 <div class="sr-stat-val">${ctx.pickup_pincode} &rarr; ${ctx.delivery_pincode}</div>
                             </div>
                         </div>
 
-                        <!-- Courier List -->
                         <div class="sr-list">
                 `;
 
@@ -196,7 +275,11 @@ function open_courier_dialog(frm) {
                                     <div class="sr-metric-lbl">Rating</div>
                                 </div>
                                 <div class="sr-price">₹${c.rate}</div>
-                                <button class="sr-btn" data-id="${c.courier_company_id}" data-rate="${c.rate}">Ship Now</button>
+                                <button class="sr-btn" 
+                                    data-id="${c.courier_company_id}" 
+                                    data-rate="${c.rate}"
+                                    data-name="${c.courier_name}"
+                                >Ship Now</button>
                             </div>
                         `;
                     });
@@ -211,27 +294,70 @@ function open_courier_dialog(frm) {
                 $wrapper.find('.sr-btn').on('click', function () {
                     let courier_id = $(this).data('id');
                     let rate = $(this).data('rate');
-                    frappe.call({
-                        method: 'adi_shipment.api.shiprocket.assign_awb_for_shipment',
-                        args: {
-                            shipment_name: frm.doc.name,
-                            courier_company_id: courier_id,
-                            amount: rate
-                        },
-                        freeze: true,
-                        freeze_message: "Assigning AWB...",
-                        callback: function (r) {
-                            if (!r.exc) {
-                                d.hide();
-                                frappe.msgprint("AWB Assigned Successfully!");
-                                frm.reload_doc();
-                            }
-                        }
+                    let courier_name = $(this).data('name');
+
+                    // Workflow: Create Order -> Assign AWB
+                    frappe.confirm(`Are you sure you want to ship with <b>${courier_name}</b> for <b>₹${rate}</b>?`, () => {
+
+                        d.hide(); // Hide table
+
+                        // We chain calls via Promise or nested callbacks
+
+                        let createOrder = function () {
+                            return new Promise((resolve, reject) => {
+                                // If ID already exists, skip creation
+                                if (frm.doc.shipment_id) {
+                                    resolve(null);
+                                    return;
+                                }
+
+                                frappe.call({
+                                    method: 'adi_shipment.api.shiprocket.create_order_from_shipment',
+                                    args: { shipment_name: frm.doc.name },
+                                    freeze: true,
+                                    freeze_message: "Creating Shiprocket Order...",
+                                    callback: function (r) {
+                                        if (!r.exc) resolve(r);
+                                        else reject(r.exc);
+                                    }
+                                });
+                            });
+                        };
+
+                        createOrder().then(() => {
+                            frappe.call({
+                                method: 'adi_shipment.api.shiprocket.assign_awb_for_shipment',
+                                args: {
+                                    shipment_name: frm.doc.name,
+                                    courier_company_id: courier_id,
+                                    amount: rate,
+                                    courier_name: courier_name // Pass name to update field
+                                },
+                                freeze: true,
+                                freeze_message: "Assigning AWB & Finalizing...",
+                                callback: function (r) {
+                                    if (!r.exc) {
+                                        frappe.msgprint(`Successfully shipped via ${courier_name}!`);
+                                        frm.reload_doc();
+
+                                        // Auto Submit after Shipping
+                                        setTimeout(() => {
+                                            if (frm.doc.docstatus === 0) {
+                                                frm.savesubmit();
+                                            }
+                                        }, 1000);
+                                    }
+                                }
+                            });
+                        }).catch(err => {
+                            frappe.msgprint("Error during shipping process. Please check logs.");
+                            console.error(err);
+                        });
                     });
                 });
 
             } else {
-                let msg = r.message && r.message.error ? r.message.error : "No couriers available.";
+                let msg = r.message && r.message.error ? r.message.error : "No couriers available due to an API error.";
                 d.get_field('ui_html').$wrapper.html(`<div class="text-center text-danger p-4">${msg}</div>`);
             }
         }
