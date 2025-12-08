@@ -11,7 +11,9 @@
         "section_break_token",
         "token",
         "token_expiry",
-        "generate_token"
+        "generate_token",
+        "tab_naming",
+        "shipment_naming_series"
     ],
     "fields": [
         {
@@ -46,6 +48,17 @@
             "fieldname": "generate_token",
             "fieldtype": "Button",
             "label": "Generate Token"
+        },
+        {
+            "fieldname": "tab_naming",
+            "fieldtype": "Tab Break",
+            "label": "Naming Series"
+        },
+        {
+            "description": "e.g. SHIPMENT-.#####",
+            "fieldname": "shipment_naming_series",
+            "fieldtype": "Data",
+            "label": "Shipment Naming Series"
         }
     ],
     "issingle": 1,
