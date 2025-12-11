@@ -591,6 +591,68 @@ def schedule_pickup_for_shipment(shipment_name):
         # frappe.throw(f"Pickup Schedule Failed: {json.dumps(data)}")
         return data # Return anyway to show message
 
+@frappe.whitelist()
+def generate_manifest(shipment_name):
+    doc = frappe.get_doc("Shipment", shipment_name)
+    token = get_token()
+    
+    shipment_id = doc.shipment_id
+    if not shipment_id:
+        frappe.throw("Shipment ID not found.")
+
+    payload = {"shipment_id": [shipment_id]}
+    
+    # URL for generating manifest
+    url = "https://apiv2.shiprocket.in/v1/external/manifests/generate"
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        data = response.json()
+        
+        if data.get("manifest_url"):
+             return {"manifest_url": data.get("manifest_url")}
+        elif data.get("status") == 0 and data.get("message"):
+             frappe.throw(f"Manifest Error: {data.get('message')}")
+        else:
+             return data
+             
+    except Exception as e:
+        frappe.log_error(f"Generate Manifest Error: {str(e)}")
+        frappe.throw(str(e))
+
+@frappe.whitelist()
+def generate_label(shipment_name):
+    doc = frappe.get_doc("Shipment", shipment_name)
+    token = get_token()
+    
+    shipment_id = doc.shipment_id
+    if not shipment_id:
+        frappe.throw("Shipment ID not found.")
+
+    payload = {"shipment_id": [shipment_id]}
+    
+    # URL for generating label
+    url = "https://apiv2.shiprocket.in/v1/external/courier/generate/label"
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        data = response.json()
+        
+        if data.get("label_url"):
+             return {"label_url": data.get("label_url")}
+        elif data.get("label_created") == 1 and data.get("response_url"):
+             # Sometimes it returns response_url
+             return {"label_url": data.get("response_url")}
+        else:
+             return data
+             
+    except Exception as e:
+        frappe.log_error(f"Generate Label Error: {str(e)}")
+        frappe.throw(str(e))
+
+
 
 
 def set_payment_method(doc, method):

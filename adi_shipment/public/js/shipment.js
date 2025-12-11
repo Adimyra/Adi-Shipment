@@ -54,6 +54,38 @@ frappe.ui.form.on('Shipment', {
                         }
                     });
                 }, "Shiprocket Action");
+
+                frm.add_custom_button('Print Manifest', function () {
+                    frappe.call({
+                        method: 'adi_shipment.api.shiprocket.generate_manifest',
+                        args: { shipment_name: frm.doc.name },
+                        freeze: true,
+                        freeze_message: "Generating Manifest...",
+                        callback: function (r) {
+                            if (r.message && r.message.manifest_url) {
+                                window.open(r.message.manifest_url, "_blank");
+                            } else if (r.message) {
+                                frappe.msgprint("Manifest Generated but no URL returned. Check Shiprocket Dashboard.");
+                            }
+                        }
+                    });
+                }, "Shiprocket Action");
+
+                frm.add_custom_button('Print Label', function () {
+                    frappe.call({
+                        method: 'adi_shipment.api.shiprocket.generate_label',
+                        args: { shipment_name: frm.doc.name },
+                        freeze: true,
+                        freeze_message: "Generating Label...",
+                        callback: function (r) {
+                            if (r.message && r.message.label_url) {
+                                window.open(r.message.label_url, "_blank");
+                            } else if (r.message) {
+                                frappe.msgprint("Label Generated but no URL returned. Check Shiprocket Dashboard.");
+                            }
+                        }
+                    });
+                }, "Shiprocket Action");
             }
 
             frm.add_custom_button('Track Shipment', function () {
