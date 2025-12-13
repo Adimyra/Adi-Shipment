@@ -1,6 +1,7 @@
 import frappe
 import requests
 import json
+import re
 from adi_shipment.api.shiprocket import get_token
 
 @frappe.whitelist()
@@ -70,6 +71,55 @@ def get_dashboard_data(search_term=None, tab_view="All", from_date=None, to_date
                 elif "RTO" in status:
                     data["stats"]["rto"] += 1
 
+                if not status:
+                     continue
+                
+                # --- Pre-process Data (Name, Phone) ---
+                c_name = order.get("customer_name", "")
+                if "-" in c_name:
+                    parts = c_name.split("-")
+                    if len(parts) == 2 and parts[0].strip().lower() == parts[1].strip().lower():
+                        c_name = parts[0].strip()
+                order["customer_name"] = c_name
+                
+                # Fetch mobile number from shipment doc
+                if order.get('channel_order_id', '').startswith('SHIP-'):
+                    try:
+                        shipment_name = order.get('channel_order_id')
+                        delivery_contact = frappe.db.get_value('Shipment', shipment_name, 'delivery_contact')
+                        if delivery_contact:
+                            phones = re.findall(r'\b\d{10}\b', str(delivery_contact))
+                            if phones:
+                                order['customer_phone'] = phones[-1]
+                    except Exception:
+                        pass
+                
+                # Extract Shipment Details (AWB, Courier) early for search
+                s_awb = ""
+                s_courier = ""
+                if order.get("shipments"):
+                     s_awb = str(order.get("shipments")[0].get("awb", "")).lower()
+                     s_courier = str(order.get("shipments")[0].get("courier", "")).lower()
+                
+                # --- Search Filter ---
+                if search_term:
+                    term = search_term.lower()
+                    # Fields to search in
+                    s_id = str(order.get("id", "")).lower()
+                    c_id = str(order.get("channel_order_id", "")).lower()
+                    c_name_lower = str(order.get("customer_name", "")).lower()
+                    c_email = str(order.get("customer_email", "")).lower()
+                    c_phone = str(order.get("customer_phone", "")).lower()
+
+                    if (term not in s_id and 
+                        term not in c_id and 
+                        term not in c_name_lower and 
+                        term not in c_email and 
+                        term not in c_phone and
+                        term not in s_awb and
+                        term not in s_courier):
+                        continue
+
                 # --- Tab Filtering ---
                 include_order = False
                 
@@ -83,7 +133,8 @@ def get_dashboard_data(search_term=None, tab_view="All", from_date=None, to_date
                         
                 elif tab_view == "Ready To Ship":
                     # Invoice Generated / AWB Assigned but not pickup scheduled yet
-                    if status in ["INVOICED", "AWB ASSIGNED", "READY TO SHIP", "MANIFEST GENERATED"]:
+                    # Merged NEW/PROCESSING here as per user request to remove NEW tab
+                    if status in ["NEW", "PROCESSING", "INVOICED", "AWB ASSIGNED", "READY TO SHIP", "MANIFEST GENERATED"]:
                         include_order = True
                         
                 elif tab_view == "Pickups":
@@ -108,8 +159,12 @@ def get_dashboard_data(search_term=None, tab_view="All", from_date=None, to_date
                         include_order = True
 
                 if include_order:
-                    # Enrich order object for UI if needed
-                    # Extract courier and awb for easier access in loop
+                    # Enrich order object for UI
+                    
+                    # Payment extraction (sometimes it's in payment_method or others)
+                    # No change needed if already working, just standardizing
+                    
+                    # Extract courier and awb
                     s_details = order.get("shipments")
                     order["display_courier"] = s_details[0].get("courier") if s_details else ""
                     order["display_awb"] = s_details[0].get("awb") if s_details else ""

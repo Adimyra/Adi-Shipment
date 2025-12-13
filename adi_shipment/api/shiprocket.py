@@ -575,6 +575,11 @@ def schedule_pickup_for_shipment(shipment_name):
     if not shipment_id:
          frappe.throw("Shipment ID not found.")
 
+    return schedule_pickup_by_id(shipment_id)
+
+@frappe.whitelist()
+def schedule_pickup_by_id(shipment_id):
+    token = get_token()
     payload = {"shipment_id": [shipment_id]}
     
     url = "https://apiv2.shiprocket.in/v1/external/courier/generate/pickup"

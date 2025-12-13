@@ -23,6 +23,14 @@ app_license = "mit"
 
 # Includes in <head>
 # ------------------
+fixtures = [
+    {
+        "doctype": "Custom HTML Block",
+        "filters": [
+            ["name", "in", ["ShipRocket Btn", "Shiprocket Heading label"]]
+        ]
+    }
+]
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/adi_shipment/css/adi_shipment.css"
@@ -233,4 +241,3 @@ scheduler_events = {
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
-

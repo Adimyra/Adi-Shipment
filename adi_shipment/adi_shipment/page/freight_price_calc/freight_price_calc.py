@@ -1,25 +1,41 @@
 import frappe
-import requests 
+import requests
 import json
+from adi_shipment.api.shiprocket import get_token
 
-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjYwMTYyNzksInNvdXJjZSI6InNyLWF1dGgtaW50IiwiZXhwIjoxNzQzNzc1MDAzLCJqdGkiOiJwSjBCZndzalJreWZNV0dKIiwiaWF0IjoxNzQyOTExMDAzLCJpc3MiOiJodHRwczovL3NyLWF1dGguc2hpcHJvY2tldC5pbi9hdXRob3JpemUvdXNlciIsIm5iZiI6MTc0MjkxMTAwMywiY2lkIjo1ODAyNjU3LCJ0YyI6MzYwLCJ2ZXJib3NlIjpmYWxzZSwidmVuZG9yX2lkIjowLCJ2ZW5kb3JfY29kZSI6IiJ9.v6YNSg7MFjEjNE9FQw7Myq64fH7j5hNVF3rQ0cde1Cw"
 SHIPROCKET_URL = "https://apiv2.shiprocket.in/v1/external/courier/serviceability/"
 
 @frappe.whitelist()
 def get_freight_price_from_dimension(freight_details_str):
-
     freight_details = json.loads(freight_details_str)
-    print(freight_details)
+    
+    # Ensure token is fresh
+    try:
+        token = get_token()
+    except Exception as e:
+        frappe.log_error(f"Token Error: {str(e)}")
+        return {"error": "Failed to authenticate with Shiprocket. Check settings."}
 
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {token}'
     }
+    
+    # Ensure numeric values are correct types for API if needed, 
+    # though requests params usually handle strings/floats fine.
+    # We just pass the dictionary as params.
+    
     try:
-        res = requests.get(SHIPROCKET_URL, headers=headers, params=freight_details) 
-        res.raise_for_status() 
-        return res.json()  
+        res = requests.get(SHIPROCKET_URL, headers=headers, params=freight_details)
+        data = res.json()
+        
+        if res.status_code != 200:
+             # Return error message from provider if available
+             return {"error": data.get("message", "Unknown Error from Shiprocket")}
+             
+        return data
+        
     except requests.exceptions.RequestException as e:
         frappe.log_error(f"Shiprocket API Error: {str(e)}")
-        return {"error": "Failed to fetch shipment cost"}
+        return {"error": "Failed to connect to Shiprocket API"}
 

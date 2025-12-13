@@ -1,8 +1,17 @@
 {
  "charts": [],
- "content": "[{\"id\":\"IVdRiI4YRp\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Shiprocket Integration</span>\",\"col\":12}},{\"id\":\"-gL2fNdM35\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Delivery Note\",\"col\":4}},{\"id\":\"I2oDCknPYf\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"MAJLWcVJiy\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Shipment\",\"col\":3}},{\"id\":\"e_-nfrKGF8\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Shiprocket Settings\",\"col\":3}},{\"id\":\"US3K0NplF4\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Pages</b></span>\",\"col\":12}},{\"id\":\"VRcl3Gcb70\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Adi Shiprocket\",\"col\":3}},{\"id\":\"hvskwbCb8I\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Dashboard\",\"col\":3}}]",
+ "content": "[{\"id\":\"xUc2TRHpM8\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"Shiprocket Heading label\",\"col\":12}},{\"id\":\"wzRBTajS8y\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"ShipRocket Btn\",\"col\":12}}]",
  "creation": "2024-12-02 14:20:00",
- "custom_blocks": [],
+ "custom_blocks": [
+  {
+   "custom_block_name": "ShipRocket Btn",
+   "label": "ShipRocket Btn"
+  },
+  {
+   "custom_block_name": "Shiprocket Heading label",
+   "label": "Shiprocket Heading label"
+  }
+ ],
  "docstatus": 0,
  "doctype": "Workspace",
  "for_user": "",
@@ -34,7 +43,7 @@
    "type": "Link"
   }
  ],
- "modified": "2025-12-04 11:53:50.886825",
+ "modified": "2025-12-13 18:57:04.428159",
  "modified_by": "Administrator",
  "module": "Adi Shipment",
  "name": "Adi Shipment",
@@ -52,46 +61,6 @@
   }
  ],
  "sequence_id": 1.0,
- "shortcuts": [
-  {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Shipment",
-   "link_to": "Shipment",
-   "stats_filter": "[]",
-   "type": "DocType"
-  },
-  {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Shiprocket Settings",
-   "link_to": "Shiprocket Settings",
-   "type": "DocType"
-  },
-  {
-   "color": "Grey",
-   "doc_view": "",
-   "icon": "",
-   "label": "Delivery Note",
-   "link_to": "Delivery Note",
-   "stats_filter": "{}",
-   "type": "DocType",
-   "url": ""
-  },
-  {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Adi Shiprocket",
-   "link_to": "adi_shiprocket",
-   "type": "Page"
-  },
-  {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Dashboard",
-   "link_to": "shiprocket_dashboard",
-   "type": "Page"
-  }
- ],
+ "shortcuts": [],
  "title": "Adi Shipment"
 }
