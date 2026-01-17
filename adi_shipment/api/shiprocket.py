@@ -204,28 +204,11 @@ def create_order_from_shipment(shipment_name):
     doc = frappe.get_doc("Shipment", shipment_name)
     token = get_token()
     
-    # 1. Gather Items from linked Delivery Notes
-    items = []
-    sku_map = {}
-    total_value = doc.value_of_goods
+    # 1. Gather Items
+    items = get_shipment_items(doc)
     
-    # If Shipment has no items directly, fetch from linked DNs
-    if not items and doc.shipment_delivery_note:
-        for link in doc.shipment_delivery_note:
-            dn = frappe.get_doc("Delivery Note", link.delivery_note)
-            for i in dn.items:
-                sku = i.item_code
-                if sku in sku_map:
-                    sku_map[sku]["units"] += i.qty
-                else:
-                    sku_map[sku] = {
-                        "name": i.item_name,
-                        "sku": i.item_code,
-                        "units": i.qty,
-                        "selling_price": i.rate
-                    }
-    
-    items = list(sku_map.values())
+    # Calculate Subtotal from items if needed, but existing logic relies on value_of_goods or cod_amount later
+    # We just ensure items are present
     
     if not items:
         frappe.throw("No items found in Shipment or linked Delivery Notes. Cannot create Shiprocket order.")
@@ -366,7 +349,7 @@ def create_order_from_shipment(shipment_name):
 
     # 4. Payment Method & Sub Total
     payment_method = "Prepaid"
-    sub_total = total_value
+    sub_total = doc.value_of_goods or 0
     
     # Check Shipment for explicit COD amount or Payment Method
     # Use 'shipment_amount' as COD amount if available
@@ -456,9 +439,50 @@ def create_order_from_shipment(shipment_name):
         frappe.throw(str(e))
 
 @frappe.whitelist()
+def get_shipment_items(doc):
+    """Helper to extract items from Shipment or linked Delivery Notes"""
+    items = []
+    sku_map = {}
+    
+    # Check if Shipment has direct items (custom app variation)
+    if hasattr(doc, 'items') and doc.items:
+        for i in doc.items:
+            sku = i.item_code
+            if sku in sku_map:
+                sku_map[sku]["units"] += i.qty
+            else:
+                sku_map[sku] = {
+                    "name": i.item_name,
+                    "sku": i.item_code,
+                    "units": i.qty,
+                    "selling_price": i.rate
+                }
+    
+    # If not, fetch from linked Delivery Notes
+    if not sku_map and doc.shipment_delivery_note:
+        for link in doc.shipment_delivery_note:
+            dn = frappe.get_doc("Delivery Note", link.delivery_note)
+            for i in dn.items:
+                sku = i.item_code
+                if sku in sku_map:
+                    sku_map[sku]["units"] += i.qty
+                else:
+                    sku_map[sku] = {
+                        "name": i.item_name,
+                        "sku": i.item_code,
+                        "units": i.qty,
+                        "selling_price": i.rate
+                    }
+    
+    return list(sku_map.values())
+
+@frappe.whitelist()
 def get_courier_serviceability(shipment_name):
     doc = frappe.get_doc("Shipment", shipment_name)
     token = get_token()
+
+    # Get Items for Summary
+    items_list = get_shipment_items(doc)
     
     # Get Delivery Pincode
     delivery_pincode = "110001"
@@ -514,7 +538,8 @@ def get_courier_serviceability(shipment_name):
                 "pickup_pincode": pickup_pincode,
                 "delivery_pincode": delivery_pincode,
                 "payment_method": payment_method,
-                "volumetric_weight": (float(length) * float(breadth) * float(height)) / 5000
+                "volumetric_weight": (float(length) * float(breadth) * float(height)) / 5000,
+                "items": items_list # Return items for frontend modal
             }
         }
     except Exception as e:
@@ -545,22 +570,20 @@ def assign_awb_for_shipment(shipment_name, courier_company_id, amount=0):
     if data.get("awb_assign_status") == 1:
         resp = data.get("response", {}).get("data", {})
         
-        # Update fields even if document is submitted
-        # db_set updates the database directly
-        doc.db_set("awb_number", resp.get("awb_code"))
-        doc.db_set("carrier", resp.get("courier_name"))
-        doc.db_set("service_provider", "Shiprocket")
-        doc.db_set("carrier_service", resp.get("courier_name"))
-        doc.db_set("tracking_url", f"https://shiprocket.co/tracking/{resp.get('awb_code')}")
-        doc.db_set("tracking_status", "In Progress")
+        # Update fields locally
+        doc.awb_number = resp.get("awb_code")
+        doc.carrier = resp.get("courier_name")
+        doc.service_provider = "Shiprocket"
+        doc.carrier_service = resp.get("courier_name")
+        doc.tracking_url = f"https://shiprocket.co/tracking/{resp.get('awb_code')}"
+        doc.tracking_status = "In Progress"
         
         if amount and float(amount) > 0:
-            doc.db_set("shipment_amount", float(amount))
-        doc.db_set("tracking_url", f"https://shiprocket.co/tracking/{resp.get('awb_code')}")
-        doc.db_set("tracking_status", "In Progress")
-        
-        # Commit to ensure changes are saved immediately
-        frappe.db.commit()
+            doc.shipment_amount = float(amount)
+            
+        doc.flags.ignore_permissions = True
+        doc.save()
+        doc.submit()
         
         return data
     else:
@@ -746,7 +769,8 @@ def cancel_shiprocket_order(doc, method):
     # 1. Cancel AWB if exists
     if doc.awb_number:
         try:
-            awb_url = "https://apiv2.shiprocket.in/v1/external/courier/generate/awb/cancel"
+            # Correct URL for cancelling AWB: /orders/cancel/shipment/awb
+            awb_url = "https://apiv2.shiprocket.in/v1/external/orders/cancel/shipment/awb"
             awb_payload = {"awbs": [doc.awb_number]}
             awb_response = requests.post(awb_url, json=awb_payload, headers=headers)
             if awb_response.status_code == 200:

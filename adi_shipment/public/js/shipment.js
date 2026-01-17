@@ -328,64 +328,110 @@ function open_courier_dialog(frm) {
                     let rate = $(this).data('rate');
                     let courier_name = $(this).data('name');
 
-                    // Workflow: Create Order -> Assign AWB
-                    frappe.confirm(`Are you sure you want to ship with <b>${courier_name}</b> for <b>₹${rate}</b>?`, () => {
+                    // Prepare Items Table from context
+                    let items_html = `
+                        <table class="table table-bordered table-sm" style="margin-top:10px; font-size:12px;">
+                            <thead>
+                                <tr class="bg-light">
+                                    <th>Item</th>
+                                    <th>SKU</th>
+                                    <th class="text-right">Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
 
-                        d.hide(); // Hide table
+                    if (ctx.items && ctx.items.length > 0) {
+                        ctx.items.forEach(i => {
+                            items_html += `
+                                <tr>
+                                    <td>${i.name}</td>
+                                    <td>${i.sku || '-'}</td>
+                                    <td class="text-right">${i.units}</td>
+                                </tr>
+                            `;
+                        });
+                    } else {
+                        items_html += `<tr><td colspan="3" class="text-center text-muted">No items found details available.</td></tr>`;
+                    }
 
-                        // We chain calls via Promise or nested callbacks
+                    items_html += `</tbody></table>`;
 
-                        let createOrder = function () {
-                            return new Promise((resolve, reject) => {
-                                // If ID already exists, skip creation
-                                if (frm.doc.shipment_id) {
-                                    resolve(null);
-                                    return;
-                                }
+                    // Order Summary Dialog
+                    let summary_dialog = new frappe.ui.Dialog({
+                        title: 'Confirm Shipment Order',
+                        size: 'small',
+                        fields: [
+                            {
+                                fieldtype: 'HTML',
+                                fieldname: 'summary_html',
+                                options: `
+                                    <div class="mb-3">
+                                        <h5 class="font-weight-bold" style="margin-bottom:5px;">${courier_name}</h5>
+                                        <p class="text-muted mb-2">Shipping Cost: <b class="text-dark">₹${rate}</b></p>
+                                    </div>
+                                    <label class="control-label" style="font-size:11px; text-transform:uppercase; color:#777;">Order Summary (${ctx.items ? ctx.items.length : 0} Items)</label>
+                                    ${items_html}
+                                    <div class="text-muted" style="font-size:11px; margin-top:5px;">
+                                        By confirming, a Shiprocket order will be created and AWB assigned immediately.
+                                    </div>
+                                `
+                            }
+                        ],
+                        primary_action_label: 'Confirm & Ship',
+                        primary_action_bootstrap_class: 'btn-primary',
+                        primary_action: function () {
+                            summary_dialog.hide();
+                            d.hide(); // Hide courier list
 
+                            let createOrder = function () {
+                                return new Promise((resolve, reject) => {
+                                    // If ID already exists, skip creation
+                                    if (frm.doc.shipment_id) {
+                                        resolve(null);
+                                        return;
+                                    }
+
+                                    frappe.call({
+                                        method: 'adi_shipment.api.shiprocket.create_order_from_shipment',
+                                        args: { shipment_name: frm.doc.name },
+                                        freeze: true,
+                                        freeze_message: "Creating Shiprocket Order...",
+                                        callback: function (r) {
+                                            if (!r.exc) resolve(r);
+                                            else reject(r.exc);
+                                        }
+                                    });
+                                });
+                            };
+
+                            createOrder().then(() => {
                                 frappe.call({
-                                    method: 'adi_shipment.api.shiprocket.create_order_from_shipment',
-                                    args: { shipment_name: frm.doc.name },
+                                    method: 'adi_shipment.api.shiprocket.assign_awb_for_shipment',
+                                    args: {
+                                        shipment_name: frm.doc.name,
+                                        courier_company_id: courier_id,
+                                        amount: rate,
+                                        courier_name: courier_name
+                                    },
                                     freeze: true,
-                                    freeze_message: "Creating Shiprocket Order...",
+                                    freeze_message: "Assigning AWB...",
                                     callback: function (r) {
-                                        if (!r.exc) resolve(r);
-                                        else reject(r.exc);
+                                        if (!r.exc) {
+                                            frappe.msgprint(`Successfully shipped via ${courier_name}!`);
+                                            // Document is already submitted in backend
+                                            frm.reload_doc();
+                                        }
                                     }
                                 });
+                            }).catch(err => {
+                                frappe.msgprint("Error during shipping process. Please check logs.");
+                                console.error(err);
                             });
-                        };
-
-                        createOrder().then(() => {
-                            frappe.call({
-                                method: 'adi_shipment.api.shiprocket.assign_awb_for_shipment',
-                                args: {
-                                    shipment_name: frm.doc.name,
-                                    courier_company_id: courier_id,
-                                    amount: rate,
-                                    courier_name: courier_name // Pass name to update field
-                                },
-                                freeze: true,
-                                freeze_message: "Assigning AWB & Finalizing...",
-                                callback: function (r) {
-                                    if (!r.exc) {
-                                        frappe.msgprint(`Successfully shipped via ${courier_name}!`);
-                                        frm.reload_doc();
-
-                                        // Auto Submit after Shipping
-                                        setTimeout(() => {
-                                            if (frm.doc.docstatus === 0) {
-                                                frm.savesubmit();
-                                            }
-                                        }, 1000);
-                                    }
-                                }
-                            });
-                        }).catch(err => {
-                            frappe.msgprint("Error during shipping process. Please check logs.");
-                            console.error(err);
-                        });
+                        }
                     });
+
+                    summary_dialog.show();
                 });
 
             } else {
