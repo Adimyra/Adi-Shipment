@@ -88,6 +88,7 @@ frappe.ui.form.on('Shipment', {
                 }, "Shiprocket Action");
             }
 
+
             frm.add_custom_button('Track Shipment', function () {
                 if (frm.doc.tracking_url) {
                     window.open(frm.doc.tracking_url, "_blank");
@@ -97,6 +98,7 @@ frappe.ui.form.on('Shipment', {
             }, "Shiprocket Action");
         }
     }
+
 });
 
 function open_manual_shipping_dialog(frm) {
@@ -398,8 +400,15 @@ function open_courier_dialog(frm) {
                                         freeze: true,
                                         freeze_message: "Creating Shiprocket Order...",
                                         callback: function (r) {
-                                            if (!r.exc) resolve(r);
-                                            else reject(r.exc);
+                                            if (!r.exc) {
+                                                if (r.message && r.message.shipment_id) {
+                                                    console.log("Setting shipment_id locally:", r.message.shipment_id);
+                                                    frm.set_value('shipment_id', r.message.shipment_id);
+                                                }
+                                                resolve(r);
+                                            } else {
+                                                reject(r.exc);
+                                            }
                                         }
                                     });
                                 });

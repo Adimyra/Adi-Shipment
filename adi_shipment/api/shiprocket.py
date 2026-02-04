@@ -403,16 +403,40 @@ def create_order_from_shipment(shipment_name):
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
-
     # Log Payload for Debugging
     frappe.log_error(message=json.dumps(payload), title=f"Shiprocket Payload {doc.name}")
 
     try:
-        response = requests.post(url, json=payload, headers=headers)
-        data = response.json()
-        
-        if response.status_code not in [200, 201] or not data.get("order_id"):
-             error_msg = data.get('message', response.text)
+        import time
+        max_retries = 3
+        data = {}
+        response = None # Initialize response outside the loop
+
+        for i in range(max_retries):
+            response = requests.post(url, json=payload, headers=headers)
+            data = response.json()
+            
+            # Check for successful order creation (Shiprocket returns order_id on success)
+            if response.status_code in [200, 201] and data.get("order_id"):
+                break
+            
+            # If it's a specific transient error, wait and retry
+            error_msg = data.get('message', response.text)
+            if isinstance(error_msg, dict):
+                error_msg = json.dumps(error_msg)
+            
+            # Common transient errors from Shiprocket
+            if "unable to process" in error_msg.lower() or "try after sometime" in error_msg.lower() or "internal server error" in error_msg.lower():
+                if i < max_retries - 1:
+                    frappe.log_error(f"Shiprocket Create Order transient error (retry {i+1}/{max_retries}): {error_msg}", "Shiprocket Warning")
+                    time.sleep(2 * (i + 1)) # Exponential backoff
+                    continue
+            
+            # If not a transient error or max retries reached, break and handle as failure
+            break
+
+        if response is None or response.status_code not in [200, 201] or not data.get("order_id"):
+             error_msg = data.get('message', response.text if response else "No response from Shiprocket")
              if isinstance(error_msg, dict):
                  error_msg = json.dumps(error_msg)
              
@@ -564,9 +588,28 @@ def assign_awb_for_shipment(shipment_name, courier_company_id, amount=0):
     url = "https://apiv2.shiprocket.in/v1/external/courier/assign/awb"
     headers = {"Authorization": f"Bearer {token}"}
     
-    response = requests.post(url, json=payload, headers=headers)
-    data = response.json()
+    import time
     
+    max_retries = 3
+    data = {}
+    
+    for i in range(max_retries):
+        response = requests.post(url, json=payload, headers=headers)
+        data = response.json()
+        
+        if data.get("awb_assign_status") == 1:
+            break
+        
+        # If it's the "Unable to process" error, wait and retry
+        error_msg = str(data.get('response', {}).get('data', ''))
+        if "unable to process" in error_msg.lower() or "try after sometime" in error_msg.lower():
+            if i < max_retries - 1:
+                time.sleep(2) # Wait 2 seconds before retry
+                continue
+        
+        # If we reach here and it's not status 1, it will fail on the if check below
+        break
+
     if data.get("awb_assign_status") == 1:
         resp = data.get("response", {}).get("data", {})
         
@@ -587,7 +630,9 @@ def assign_awb_for_shipment(shipment_name, courier_company_id, amount=0):
         
         return data
     else:
-        frappe.throw(f"AWB Assignment Failed: {data.get('message')}")
+        # Get detailed error message
+        error_msg = data.get('message') or data.get('error') or json.dumps(data)
+        frappe.throw(f"AWB Assignment Failed: {error_msg}")
 
 @frappe.whitelist()
 def schedule_pickup_for_shipment(shipment_name):

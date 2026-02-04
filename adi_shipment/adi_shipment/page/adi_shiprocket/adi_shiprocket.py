@@ -11,6 +11,16 @@ def get_dashboard_data():
 
     headers = {"Authorization": f"Bearer {token}"}
     
+    # 0. Get balance
+    balance = 0
+    try:
+        balance_url = "https://apiv2.shiprocket.in/v1/external/account/details/wallet-balance"
+        balance_res = requests.get(balance_url, headers=headers)
+        balance_data = balance_res.json()
+        balance = balance_data.get("data", {}).get("wallet_balance", 0)
+    except Exception as e:
+        frappe.log_error(f"Shiprocket Balance Error: {str(e)}")
+    
     # 1. Get Orders (Last 50)
     orders_url = "https://apiv2.shiprocket.in/v1/external/orders"
     try:
@@ -56,7 +66,8 @@ def get_dashboard_data():
             
     return {
         "stats": stats,
-        "orders": recent_orders[:50]
+        "orders": recent_orders[:50],
+        "balance": balance
     }
 
 @frappe.whitelist()
@@ -156,3 +167,48 @@ def get_freight_price_from_dimension(freight_details_str):
     except requests.exceptions.RequestException as e:
         frappe.log_error(f"Shiprocket Rate Calc Error: {str(e)}")
         return {"error": "Failed to fetch shipment cost"}
+
+@frappe.whitelist()
+def cancel_order(order_id):
+    token = get_token()
+    if not token:
+        return {"error": "Authentication failed"}
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {token}'
+    }
+
+    # 1. Fetch order details to check for AWB/Shipment
+    try:
+        show_url = f"https://apiv2.shiprocket.in/v1/external/orders/show/{order_id}"
+        show_res = requests.get(show_url, headers=headers)
+        order_data = show_res.json().get("data", {})
+        
+        # Check if AWB exists in shipments
+        awb_number = None
+        if order_data.get("shipments"):
+            awb_number = order_data["shipments"][0].get("awb")
+        
+        # 2. If AWB exists, cancel AWB first
+        if awb_number:
+            cancel_awb_url = "https://apiv2.shiprocket.in/v1/external/orders/cancel/shipment/awb"
+            requests.post(cancel_awb_url, headers=headers, json={"awbs": [awb_number]})
+            
+    except Exception as e:
+        frappe.log_error(f"Pre-cancel fetch error: {str(e)}")
+
+    # 3. Cancel the actual order
+    url = "https://apiv2.shiprocket.in/v1/external/orders/cancel"
+    payload = {"ids": [order_id]}
+
+    try:
+        res = requests.post(url, headers=headers, json=payload)
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        frappe.log_error(f"Shiprocket Cancel Error: {str(e)}")
+        try:
+            return {"error": res.json().get('message', str(e))}
+        except:
+            return {"error": str(e)}

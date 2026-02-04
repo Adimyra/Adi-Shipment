@@ -29,7 +29,11 @@ frappe.pages['shiprocket_dashboard'].on_page_load = function (wrapper) {
                     <p class="text-muted text-sm" style="margin:5px 0 0 0;">Manage your shipments, schedule pickups, and track orders.</p>
                 </div>
             </div>
-            <div>
+            <div class="flex align-center">
+                 <div id="wallet-balance-container" style="margin-right: 20px; text-align: right; display: none;">
+                    <div class="text-muted" style="font-size: 11px; text-transform: uppercase; font-weight: 600;">Wallet Balance</div>
+                    <div id="wallet-balance-value" style="font-size: 18px; font-weight: 700; color: #7B1FA2;">₹ 0.00</div>
+                 </div>
                  <button class="btn btn-default btn-calc btn-sm" style="border-radius: 50%; width: 36px; height: 36px; padding: 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-right: 10px;" title="Rate Calculator"><i class="fa fa-calculator"></i></button>
                  <button class="btn btn-default btn-refresh btn-sm" style="border-radius: 50%; width: 36px; height: 36px; padding: 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1);"><i class="fa fa-refresh"></i></button>
             </div>
@@ -195,6 +199,12 @@ function render_dashboard(wrapper) {
                 let stats = data.stats;
                 let orders = data.orders || [];
 
+                // Update Header Balance
+                if (data.balance !== undefined) {
+                    $('#wallet-balance-value').text(`₹ ${data.balance}`);
+                    $('#wallet-balance-container').show();
+                }
+
                 // 1. Stats Cards Section
                 let stats_html = `
                     <div class="row overview-stats-row" style="margin-left: -10px; margin-right: -10px;">
@@ -314,11 +324,15 @@ function get_order_row(order) {
             if (status === 'MANIFEST GENERATED') {
                 actions += `<button class="btn btn-xs btn-default mr-1" onclick="print_shiprocket_doc('${shipment_id}', 'manifest')" title="Manifest"><i class="fa fa-file-text-o"></i></button>`;
             }
+
+            // Cancel Option
+            actions += `<button class="btn btn-xs btn-danger-soft mr-1" onclick="cancel_shiprocket_order('${order.id}')" title="Cancel Order"><i class="fa fa-ban"></i></button>`;
         }
     }
     else if (status === 'NEW' || status === 'PROCESSING') {
         if (shipment_id) {
             actions += `<button class="btn btn-xs btn-primary-soft mr-1" onclick="print_shiprocket_doc('${shipment_id}', 'label')">Generate Label</button>`;
+            actions += `<button class="btn btn-xs btn-danger-soft mr-1" onclick="cancel_shiprocket_order('${order.id}')" title="Cancel Order"><i class="fa fa-ban"></i> Cancel</button>`;
         }
     }
     else if (status === 'PICKUP SCHEDULED' || status === 'PICKUP QUEUED') {
@@ -453,6 +467,34 @@ window.schedule_pickup = function (shipment_id) {
     });
 }
 
+// Global function to be called from onclick
+window.cancel_shiprocket_order = function (order_id) {
+    if (!order_id) return;
+
+    frappe.confirm(`Are you sure you want to cancel order ${order_id}?`, function () {
+        frappe.call({
+            method: "adi_shipment.adi_shipment.page.shiprocket_dashboard.shiprocket_dashboard.cancel_order",
+            args: { order_id: order_id },
+            freeze: true,
+            freeze_message: "Cancelling Order...",
+            callback: function (r) {
+                if (r.message && !r.message.error) {
+                    frappe.show_alert({
+                        message: __('Order Cancelled Successfully'),
+                        indicator: 'green'
+                    });
+                    location.reload();
+                } else {
+                    frappe.msgprint({
+                        title: 'Error',
+                        message: r.message ? r.message.error : "Unknown Error",
+                        indicator: 'red'
+                    });
+                }
+            }
+        });
+    });
+}
 
 function get_status_color(status) {
     status = (status || '').toUpperCase();
@@ -538,10 +580,19 @@ function add_custom_css() {
                 background-color: #c5cae9;
                 color: #303f9f;
             }
-             .btn-info-soft {
+            .btn-info-soft {
                 background-color: #e1f5fe;
                 color: #039be5;
                 border: none;
+            }
+            .btn-danger-soft {
+                background-color: #ffebee;
+                color: #d32f2f;
+                border: none;
+            }
+            .btn-danger-soft:hover {
+                background-color: #ffcdd2;
+                color: #b71c1c;
             }
             
             /* Indicators */

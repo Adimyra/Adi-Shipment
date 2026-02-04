@@ -38,6 +38,7 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                 if (r.message && !r.message.error) {
                     const stats = r.message.stats;
                     const orders = r.message.orders;
+                    const balance = r.message.balance || 0;
 
                     let stats_html = `
                         <div class="row" style="margin-bottom: 30px;">
@@ -69,6 +70,12 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                                 <div class="dashboard-stat-box" style="background: #E0F2F1; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #B2DFDB;">
                                     <h3 style="color: #00796B; margin-bottom: 5px;">${stats.delivered}</h3>
                                     <span style="color: #00796B; font-size: 12px; text-transform: uppercase; font-weight: 600;">Delivered</span>
+                                </div>
+                            </div>
+                            <div class="col-md-2 col-sm-4 col-6">
+                                <div class="dashboard-stat-box" style="background: #F3E5F5; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #E1BEE7;">
+                                    <h3 style="color: #7B1FA2; margin-bottom: 5px;">₹ ${balance}</h3>
+                                    <span style="color: #7B1FA2; font-size: 12px; text-transform: uppercase; font-weight: 600;">Wallet Balance</span>
                                 </div>
                             </div>
                         </div>
@@ -107,9 +114,16 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                                     <td>₹ ${order.total}</td>
                                     <td>${order.payment_method}</td>
                                     <td>
-                                        <a href="https://app.shiprocket.in/orders/processing?search=${order.id}" target="_blank" class="btn btn-xs btn-default">
-                                            View in Shiprocket
-                                        </a>
+                                        <div class="btn-group">
+                                            <a href="https://app.shiprocket.in/orders/processing?search=${order.id}" target="_blank" class="btn btn-xs btn-default">
+                                                View
+                                            </a>
+                                            ${(order.status === 'NEW' || order.status === 'PICKUP SCHEDULED') ? `
+                                                <button class="btn btn-xs btn-danger btn-cancel-order" data-id="${order.id}">
+                                                    Cancel
+                                                </button>
+                                            ` : ''}
+                                        </div>
                                     </td>
                                 </tr>
                             `;
@@ -121,10 +135,43 @@ frappe.pages['adi_shiprocket'].on_page_load = function (wrapper) {
                     table_html += `</tbody></table></div>`;
 
                     $container.html(stats_html + table_html);
+
+                    // Add Event Listener for Cancel Button
+                    $container.find('.btn-cancel-order').on('click', function () {
+                        const order_id = $(this).data('id');
+                        cancel_shiprocket_order(order_id);
+                    });
+
                 } else {
                     $container.html(`<div class="alert alert-danger">Error loading dashboard: ${r.message ? r.message.error : "Unknown error"}</div>`);
                 }
             }
+        });
+    }
+
+    function cancel_shiprocket_order(order_id) {
+        frappe.confirm(`Are you sure you want to cancel order ${order_id}?`, function () {
+            frappe.call({
+                method: "adi_shipment.adi_shipment.page.adi_shiprocket.adi_shiprocket.cancel_order",
+                args: { order_id: order_id },
+                freeze: true,
+                freeze_message: "Cancelling Order...",
+                callback: function (r) {
+                    if (r.message && !r.message.error) {
+                        frappe.show_alert({
+                            message: __('Order Cancelled Successfully'),
+                            indicator: 'green'
+                        });
+                        render_dashboard();
+                    } else {
+                        frappe.msgprint({
+                            title: 'Error',
+                            message: r.message ? r.message.error : "Unknown Error",
+                            indicator: 'red'
+                        });
+                    }
+                }
+            });
         });
     }
 
