@@ -1,14 +1,11 @@
-# ```python
-import frappe
+import frappe # type: ignore
 import requests
 import json
-from frappe.utils import add_to_date, now_datetime, flt
-
+from frappe.utils import add_to_date, now_datetime, flt, get_datetime # type: ignore
 def get_token():
     settings = frappe.get_single("Shiprocket Settings")
 
-    from frappe.utils import get_datetime
-    
+
     if settings.token and settings.token_expiry:
         expiry = get_datetime(settings.token_expiry)
         if expiry > now_datetime():
@@ -501,9 +498,10 @@ def get_shipment_items(doc):
     return list(sku_map.values())
 
 @frappe.whitelist()
-def get_courier_serviceability(shipment_name):
+def get_courier_serviceability(shipment_name, use_volumetric=0):
     doc = frappe.get_doc("Shipment", shipment_name)
     token = get_token()
+    use_volumetric = frappe.utils.cint(use_volumetric)
 
     # Get Items for Summary
     items_list = get_shipment_items(doc)
@@ -525,6 +523,10 @@ def get_courier_serviceability(shipment_name):
         length = p.length
         breadth = p.width
         height = p.height
+        
+    volumetric_weight = (float(length) * float(breadth) * float(height)) / 5000.0
+    if use_volumetric and volumetric_weight > 0:
+        weight = volumetric_weight
 
     # Pickup Pincode (Defaulting to Ranchi/Work for now, ideally fetch from Pickup Address)
     pickup_pincode = "834001" 
@@ -562,7 +564,7 @@ def get_courier_serviceability(shipment_name):
                 "pickup_pincode": pickup_pincode,
                 "delivery_pincode": delivery_pincode,
                 "payment_method": payment_method,
-                "volumetric_weight": (float(length) * float(breadth) * float(height)) / 5000,
+                "volumetric_weight": volumetric_weight,
                 "items": items_list # Return items for frontend modal
             }
         }

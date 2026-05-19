@@ -184,12 +184,15 @@ function open_courier_dialog(frm) {
     });
 
     d.show();
-    d.get_field('ui_html').$wrapper.html('<div class="text-center text-muted p-4">Fetching best rates from Shiprocket...</div>');
+    fetch_rates(0);
 
-    frappe.call({
-        method: 'adi_shipment.api.shiprocket.get_courier_serviceability',
-        args: { shipment_name: frm.doc.name },
-        callback: function (r) {
+    function fetch_rates(use_volumetric = 0) {
+        d.get_field('ui_html').$wrapper.html('<div class="text-center text-muted p-4">Fetching best rates from Shiprocket...</div>');
+
+        frappe.call({
+            method: 'adi_shipment.api.shiprocket.get_courier_serviceability',
+            args: { shipment_name: frm.doc.name, use_volumetric: use_volumetric },
+            callback: function (r) {
             if (r.message && r.message.shiprocket_response && r.message.shiprocket_response.data) {
                 let data = r.message.shiprocket_response.data;
                 let ctx = r.message.context || {};
@@ -278,6 +281,13 @@ function open_courier_dialog(frm) {
                             </div>
                         </div>
 
+                        <div style="margin-bottom: 15px; padding: 0 5px; display: flex; align-items: center;">
+                            <input type="checkbox" id="sr-use-volumetric" style="margin-right: 8px; width: 16px; height: 16px; cursor: pointer;" ${use_volumetric ? 'checked' : ''}>
+                            <label for="sr-use-volumetric" style="font-size: 13px; font-weight: 600; cursor: pointer; color: #374151; margin: 0;">
+                                Calculate using Volumetric Weight (${ctx.volumetric_weight ? ctx.volumetric_weight.toFixed(3) : '-'} kg)
+                            </label>
+                        </div>
+
                         <div class="sr-list">
                 `;
 
@@ -323,6 +333,12 @@ function open_courier_dialog(frm) {
 
                 let $wrapper = d.get_field('ui_html').$wrapper;
                 $wrapper.html(html);
+
+                // Bind Checkbox
+                $wrapper.find('#sr-use-volumetric').on('change', function() {
+                    let is_checked = $(this).is(':checked');
+                    fetch_rates(is_checked ? 1 : 0);
+                });
 
                 // Bind Click
                 $wrapper.find('.sr-btn').on('click', function () {
@@ -449,4 +465,5 @@ function open_courier_dialog(frm) {
             }
         }
     });
+    }
 }
