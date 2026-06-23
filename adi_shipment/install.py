@@ -12,6 +12,13 @@ def after_install():
                 "default": "Prepaid",
                 "insert_after": "value_of_goods",
                 "read_only": 0
+            },
+            {
+                "fieldname": "shiprocket_order_id",
+                "label": "Shiprocket Order ID",
+                "fieldtype": "Data",
+                "insert_after": "payment_method",
+                "read_only": 1
             }
         ]
     })

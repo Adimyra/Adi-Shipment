@@ -829,15 +829,19 @@ def cancel_shiprocket_order(doc, method):
     shiprocket_order_id = doc.get("shiprocket_order_id")
     
     if not shiprocket_order_id:
-        # Try fetching from Shiprocket using the Shipment Name
+        # Try fetching from Shiprocket using the Shipment Name/order_id search
         try:
             search_url = "https://apiv2.shiprocket.in/v1/external/orders"
-            search_params = {"custom_order_id": doc.name} 
+            search_params = {"search": doc.name, "per_page": 50} 
             search_resp = requests.get(search_url, headers=headers, params=search_params)
             search_data = search_resp.json()
             
             if search_data.get("data") and len(search_data["data"]) > 0:
-                shiprocket_order_id = search_data["data"][0].get("id")
+                for order in search_data["data"]:
+                    # Verify channel_order_id matches doc.name exactly to prevent matching wrong orders
+                    if str(order.get("channel_order_id")) == str(doc.name):
+                        shiprocket_order_id = order.get("id")
+                        break
         except Exception as e:
             frappe.log_error(f"Fetch Order ID Error: {str(e)}")
 

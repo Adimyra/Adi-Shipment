@@ -152,6 +152,11 @@ def on_cancel_shipment_cancel_cod(doc, method):
         for cod in cod_docs:
             cod_doc = frappe.get_doc("COD", cod.name)
             
+            if cod_doc.status == "Paid":
+                frappe.throw(
+                    _("Cannot cancel Shipment {0} because the COD transaction {1} has already been reconciled and Paid.").format(doc.name, cod.name)
+                )
+            
             # If Journal Entry is submitted, cancel it first
             if cod.journal_status == "Submitted" and cod.journal_entry_id:
                 try:
@@ -194,9 +199,10 @@ def on_cancel_shipment_cancel_cod(doc, method):
             
             # Update COD status to Cancelled using db_set to avoid validation errors with legacy data
             cod_doc.db_set("status", "Cancelled")
+            cod_doc.db_set("payment_status", "Paid")
             
             frappe.msgprint(
-                f"COD Document {cod.name} cancelled",
+                f"COD Document {cod.name} cancelled and marked as Paid (not due)",
                 indicator="orange"
             )
         
@@ -271,9 +277,6 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
     
     company_abbr = frappe.get_value("Company", company, "abbr")
     
-    # Ensure Shiprocket Supplier exists
-    setup_shiprocket_supplier()
-    
     # Get accounts
     try:
         if si_doc:
@@ -281,15 +284,7 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
         else:
             debtors_account = f"Debtors - {company_abbr}"
         
-        # Get Shiprocket payable account
-        from erpnext.accounts.party import get_party_account
-        creditors_account = get_party_account("Supplier", "Shiprocket", company)
-        
-        if not creditors_account:
-            creditors_account = frappe.get_value("Company", company, "default_payable_account")
-        
-        if not creditors_account:
-            frappe.throw(f"Could not find Payable Account for Shiprocket in Company {company}")
+        clearing_account = get_cod_clearing_account(company)
             
     except Exception as e:
         frappe.throw(f"Error fetching accounts: {str(e)}")
@@ -304,8 +299,8 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
     je.posting_date = getdate()
     je.company = company
     
-    # Set title based on creditors account (e.g., "Creditors - ZV")
-    je.title = creditors_account.split(" - ")[0] if " - " in creditors_account else "Creditors"
+    # Set title based on clearing account
+    je.title = clearing_account.split(" - ")[0] if " - " in clearing_account else "COD Clearing"
     
     # Set remark based on reference document
     if si_doc:
@@ -315,17 +310,25 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
     else:
         je.remark = f"COD Collection for Shipment {shipment_doc.name}"
     
-    # Row 1: Debit Supplier (Shiprocket owes us this money)
-    je.append("accounts", {
-        "account": creditors_account,
-        "party_type": "Supplier",
-        "party": "Shiprocket",
+    # Row 1: Debit Clearing Account (COD Cash in Transit)
+    row1 = {
+        "account": clearing_account,
         "debit_in_account_currency": amount,
         "credit_in_account_currency": 0,
         "user_remark": f"COD Collected for {reference_type} {reference_name}" if reference_type else f"COD Collected for Shipment {shipment_doc.name}",
         "cost_center": cost_center,
         "against_account": customer if customer else ""
-    })
+    }
+    
+    # Safety Check: If clearing account type is Receivable (like COD - ZV), ERPNext requires a Customer party
+    clearing_account_type = frappe.db.get_value("Account", clearing_account, "account_type")
+    if clearing_account_type == "Receivable" and customer:
+        row1.update({
+            "party_type": "Customer",
+            "party": customer
+        })
+        
+    je.append("accounts", row1)
     
     # Row 2: Credit Customer (Customer has paid via COD)
     je.append("accounts", {
@@ -337,12 +340,46 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
         "reference_type": reference_type,
         "reference_name": reference_name,
         "cost_center": cost_center,
-        "against_account": "Shiprocket"
+        "against_account": clearing_account
     })
     
     je.insert(ignore_permissions=True)
     
     return je.name
+
+
+def get_cod_clearing_account(company):
+    """
+    Finds or creates the COD clearing account.
+    Priority:
+    1. COD - {company_abbr}
+    2. Shiprocket COD Clearing - {company_abbr}
+    3. Auto-creates 'COD' under Current Assets
+    """
+    company_abbr = frappe.get_value("Company", company, "abbr")
+    
+    # 1. Check for "COD - {company_abbr}"
+    acc_name1 = f"COD - {company_abbr}"
+    if frappe.db.exists("Account", acc_name1):
+        return acc_name1
+        
+    # 2. Check for "Shiprocket COD Clearing - {company_abbr}"
+    acc_name2 = f"Shiprocket COD Clearing - {company_abbr}"
+    if frappe.db.exists("Account", acc_name2):
+        return acc_name2
+        
+    # 3. Create "COD" under Current Assets if not found
+    parent = frappe.db.get_value("Account", {"company": company, "is_group": 1, "root_type": "Asset", "account_name": "Current Assets"}, "name")
+    if not parent:
+        parent = frappe.db.get_value("Account", {"company": company, "is_group": 1, "root_type": "Asset"}, "name")
+        
+    acct = frappe.new_doc("Account")
+    acct.account_name = "COD"
+    acct.parent_account = parent
+    acct.company = company
+    acct.account_type = "Bank"  # Allows selection in payment screens
+    acct.insert(ignore_permissions=True)
+    return acct.name
 
 
 def setup_shiprocket_supplier():
@@ -383,3 +420,47 @@ def get_linked_sales_invoice(shipment_doc):
             return si_name, frappe.get_doc("Sales Invoice", si_name)
             
     return None, None
+
+
+@frappe.whitelist()
+def create_je_for_cod(cod_name):
+    """
+    Creates a draft Journal Entry for a COD document that doesn't have one linked.
+    """
+    cod_doc = frappe.get_doc("COD", cod_name)
+    if cod_doc.journal_entry_id:
+        frappe.throw(_("Journal Entry is already created and linked: {0}").format(cod_doc.journal_entry_id))
+        
+    if not cod_doc.shipment_id:
+        frappe.throw(_("No linked Shipment found in COD document {0}").format(cod_name))
+        
+    shipment_doc = frappe.get_doc("Shipment", cod_doc.shipment_id)
+    
+    # Try to find/traverse Sales Invoice
+    si_name, si_doc = get_linked_sales_invoice(shipment_doc)
+    
+    # If no Sales Invoice found, look at COD document's sales_invoice field
+    if not si_name and cod_doc.sales_invoice:
+        si_name = cod_doc.sales_invoice
+        si_doc = frappe.get_doc("Sales Invoice", si_name)
+        
+    # Check if Sales Invoice exists
+    if not si_name:
+        frappe.throw(_("Cannot create Journal Entry. No linked Sales Invoice found for Shipment {0}. Please ensure a Sales Invoice is created and linked first.").format(cod_doc.shipment_id))
+        
+    # Create the Journal Entry
+    je_name = create_cod_journal_entry(
+        shipment_doc, 
+        si_doc, 
+        cod_doc.sales_order,
+        cod_doc.name, 
+        cod_doc.cod_amount
+    )
+    
+    # Link to COD doc and update status
+    cod_doc.db_set("journal_entry_id", je_name)
+    cod_doc.db_set("journal_status", "Draft")
+    cod_doc.db_set("status", "Pending")
+    
+    frappe.db.commit()
+    return je_name

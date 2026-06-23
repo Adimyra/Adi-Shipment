@@ -53,7 +53,8 @@ fixtures = [
 # include js in doctype views
 doctype_js = {
     "Delivery Note": "public/js/delivery_note.js",
-    "Shipment": "public/js/shipment.js"
+    "Shipment": "public/js/shipment.js",
+    "Payment Entry": "public/js/payment_entry.js"
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -161,6 +162,10 @@ doc_events = {
             "adi_shipment.api.shiprocket.cancel_shiprocket_order",
             "adi_shipment.api.cod_processing.on_cancel_shipment_cancel_cod"
         ]
+    },
+    "Payment Entry": {
+        "on_submit": "adi_shipment.api.cod_reconciliation.on_submit_payment_entry_update_cod",
+        "on_cancel": "adi_shipment.api.cod_reconciliation.on_cancel_payment_entry_rollback_cod"
     }
 }
 

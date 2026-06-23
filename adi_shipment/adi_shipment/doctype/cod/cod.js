@@ -1,7 +1,7 @@
 frappe.ui.form.on('COD', {
     refresh: function (frm) {
         // Add "Verify COD" button if status is Pending and Journal Entry is Draft
-        if (frm.doc.status === "Pending" && frm.doc.journal_status === "Draft" && frm.doc.journal_entry_id) {
+        if (frm.doc.journal_entry_id && ["Pending", "Draft"].includes(frm.doc.status) && frm.doc.journal_status !== "Submitted") {
             frm.add_custom_button(__('Verify COD'), function () {
                 frappe.call({
                     method: 'adi_shipment.api.cod_verification.verify_and_submit_cod',
@@ -14,6 +14,29 @@ frappe.ui.form.on('COD', {
                         if (!r.exc) {
                             frappe.show_alert({
                                 message: __('COD Verified and Journal Entry Submitted'),
+                                indicator: 'green'
+                            });
+                            frm.reload_doc();
+                        }
+                    }
+                });
+            }).addClass('btn-primary');
+        }
+
+        // Add "Create Journal Entry" button if journal_entry_id is missing and status is Draft/Pending
+        if (!frm.doc.journal_entry_id && ["Pending", "Draft"].includes(frm.doc.status)) {
+            frm.add_custom_button(__('Create Journal Entry'), function () {
+                frappe.call({
+                    method: 'adi_shipment.api.cod_processing.create_je_for_cod',
+                    args: {
+                        cod_name: frm.doc.name
+                    },
+                    freeze: true,
+                    freeze_message: __("Creating Journal Entry..."),
+                    callback: function (r) {
+                        if (!r.exc) {
+                            frappe.show_alert({
+                                message: __('Journal Entry created successfully'),
                                 indicator: 'green'
                             });
                             frm.reload_doc();
