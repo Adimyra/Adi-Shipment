@@ -359,7 +359,7 @@ def on_submit_payment_entry_update_cod(doc, method):
         if ref.reference_doctype == "Journal Entry":
             cod_names = frappe.get_all(
                 "COD",
-                filters={"journal_entry_id": ref.reference_name, "status": "Pending"},
+                filters={"journal_entry_id": ref.reference_name, "status": ["in", ["Pending", "Journal Submitted"]]},
                 fields=["name"]
             )
             for cod in cod_names:
@@ -373,7 +373,7 @@ def on_cancel_payment_entry_rollback_cod(doc, method):
     """
     Triggered on Payment Entry cancel.
     If the Payment Entry references any Journal Entries linked to COD documents,
-    rollback those COD documents back to "Pending".
+    rollback those COD documents back to "Journal Submitted".
     """
     for ref in doc.references:
         if ref.reference_doctype == "Journal Entry":
@@ -384,6 +384,6 @@ def on_cancel_payment_entry_rollback_cod(doc, method):
             )
             for cod in cod_names:
                 cod_doc = frappe.get_doc("COD", cod.name)
-                cod_doc.db_set("status", "Pending")
+                cod_doc.db_set("status", "Journal Submitted")
                 cod_doc.db_set("payment_status", "Due")
                 cod_doc.db_set("payment_entry_id", None)

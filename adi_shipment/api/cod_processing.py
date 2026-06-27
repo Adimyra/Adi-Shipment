@@ -76,7 +76,7 @@ def on_submit_shipment_create_cod(doc, method):
         # Set COD document fields
         cod_doc = frappe.get_doc("COD", cod_doc_name)
         cod_doc.journal_entry_id = je_name
-        cod_doc.journal_status = "Submitted"
+        cod_doc.journal_status = "Draft"
         cod_doc.status = "Pending"
         cod_doc.save()
         
@@ -151,14 +151,22 @@ def on_cancel_shipment_cancel_cod(doc, method):
                     _("Cannot cancel Shipment {0} because the COD transaction {1} has already been reconciled and Paid.").format(doc.name, cod.name)
                 )
             
-            # Cancel the related Journal Entry if exists
+            # Cancel/Delete the related Journal Entry if exists
             if cod_doc.journal_entry_id:
-                if frappe.db.get_value("Journal Entry", cod_doc.journal_entry_id, "docstatus") == 1:
+                je_docstatus = frappe.db.get_value("Journal Entry", cod_doc.journal_entry_id, "docstatus")
+                if je_docstatus == 1:
                     je_doc = frappe.get_doc("Journal Entry", cod_doc.journal_entry_id)
                     je_doc.cancel()
                     cod_doc.db_set("journal_status", "Cancelled")
                     frappe.msgprint(
                         f"Journal Entry {cod_doc.journal_entry_id} cancelled successfully.",
+                        indicator="orange"
+                    )
+                elif je_docstatus == 0:
+                    frappe.delete_doc("Journal Entry", cod_doc.journal_entry_id)
+                    cod_doc.db_set("journal_status", "Cancelled")
+                    frappe.msgprint(
+                        f"Draft Journal Entry {cod_doc.journal_entry_id} deleted successfully.",
                         indicator="orange"
                     )
             
@@ -202,7 +210,7 @@ def create_cod_document(doc, delivery_note, sales_order, sales_invoice, cod_amou
 
 def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, cod_amount):
     """
-    Creates and submits a Journal Entry to transfer COD amount from End Buyer to Shiprocket Customer.
+    Creates a draft Journal Entry to transfer COD amount from End Buyer to Shiprocket Customer.
     Debit: Shiprocket Customer (Creates receivable from Shiprocket)
     Credit: End Buyer (Reduces receivable from Customer against Sales Invoice)
     """
@@ -221,19 +229,21 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
     if si_doc:
         company = si_doc.company
         customer = si_doc.customer
-        reference_type = "Sales Invoice"
-        reference_name = si_doc.name
+        if si_doc.docstatus == 1:
+            reference_type = "Sales Invoice"
+            reference_name = si_doc.name
         cost_center = si_doc.items[0].cost_center if si_doc.items else None
     elif sales_order:
         so_doc = frappe.get_doc("Sales Order", sales_order)
         company = so_doc.company
         customer = so_doc.customer
-        reference_type = "Sales Order"
-        reference_name = so_doc.name
+        if so_doc.docstatus == 1:
+            reference_type = "Sales Order"
+            reference_name = so_doc.name
         cost_center = so_doc.items[0].cost_center if so_doc.items else None
     else:
-        company = frappe.defaults.get_user_default("Company")
-        customer = None
+        company = shipment_doc.get("pickup_company") or frappe.defaults.get_user_default("Company")
+        customer = shipment_doc.get("delivery_customer") or shipment_doc.get("pickup_customer")
         
     if not company:
         frappe.throw("Company could not be resolved for the Journal Entry.")
@@ -251,8 +261,8 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
     # Create Journal Entry
     je = frappe.new_doc("Journal Entry")
     je.voucher_type = "Journal Entry"
-    # Use Sales Invoice posting date if available, otherwise today
-    je.posting_date = si_doc.posting_date if si_doc else (shipment_doc.posting_date or getdate())
+    # Use Sales Invoice posting date if available, otherwise today/pickup date
+    je.posting_date = si_doc.posting_date if si_doc else (shipment_doc.get("pickup_date") or getdate())
     je.company = company
     
     je.title = f"COD - {customer or 'Unknown'} - Shiprocket"
@@ -283,7 +293,6 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
     })
     
     je.insert(ignore_permissions=True)
-    je.submit()
     
     return je.name
 
@@ -333,7 +342,7 @@ def setup_shiprocket_supplier():
         frappe.msgprint("Created Supplier: Shiprocket", indicator="blue")
 
 def setup_shiprocket_customer():
-    """Ensures Shiprocket Customer exists"""
+    """Ensures Shiprocket Customer exists and is properly configured with Territory and Default Accounts"""
     if not frappe.db.exists("Customer", "Shiprocket"):
         cust = frappe.new_doc("Customer")
         cust.customer_name = "Shiprocket"
@@ -341,6 +350,51 @@ def setup_shiprocket_customer():
         cust.customer_type = "Company"
         cust.insert(ignore_permissions=True)
         frappe.msgprint("Created Customer: Shiprocket", indicator="blue")
+
+    # Configure Customer fields if missing
+    cust = frappe.get_doc("Customer", "Shiprocket")
+    updated = False
+
+    if not cust.territory:
+        # Check if "All Territories" exists, else take first non-group territory, else any territory
+        territory = "All Territories"
+        if not frappe.db.exists("Territory", territory):
+            territories = frappe.get_all("Territory", filters={"is_group": 0}, limit=1)
+            if territories:
+                territory = territories[0].name
+            else:
+                any_territory = frappe.get_all("Territory", limit=1)
+                if any_territory:
+                    territory = any_territory[0].name
+        cust.territory = territory
+        updated = True
+
+    # Ensure default accounts are configured for each company
+    companies = frappe.get_all("Company", fields=["name", "abbr", "default_receivable_account"])
+    existing_companies = [row.company for row in cust.accounts] if cust.accounts else []
+
+    for comp in companies:
+        if comp.name not in existing_companies:
+            account = comp.default_receivable_account
+            if not account or not frappe.db.exists("Account", account):
+                fallback_acc = f"Debtors - {comp.abbr}"
+                if frappe.db.exists("Account", fallback_acc):
+                    account = fallback_acc
+                else:
+                    accounts = frappe.get_all("Account", filters={"company": comp.name, "account_type": "Receivable", "is_group": 0}, limit=1)
+                    if accounts:
+                        account = accounts[0].name
+            
+            if account:
+                cust.append("accounts", {
+                    "company": comp.name,
+                    "account": account
+                })
+                updated = True
+
+    if updated:
+        cust.save(ignore_permissions=True)
+        frappe.db.commit()
 
 
 def get_linked_sales_invoice(shipment_doc):

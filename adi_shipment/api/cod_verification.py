@@ -30,36 +30,37 @@ def verify_and_submit_cod(cod_name):
         # Re-check for Sales Invoice if not already linked
         if not cod_doc.sales_invoice and cod_doc.shipment_id:
             shipment_doc = frappe.get_doc("Shipment", cod_doc.shipment_id)
-            
-            # Import the helper function
             from adi_shipment.api.cod_processing import get_linked_sales_invoice
             si_name, si_doc = get_linked_sales_invoice(shipment_doc)
-            
             if si_doc:
-                # Update COD document with Sales Invoice
                 cod_doc.sales_invoice = si_name
                 cod_doc.save()
-                
-                # Update Journal Entry with Sales Invoice reference
+
+        # If Sales Invoice is linked, ensure it is submitted and update Journal Entry reference
+        if cod_doc.sales_invoice:
+            si_status, debit_to = frappe.db.get_value("Sales Invoice", cod_doc.sales_invoice, ["docstatus", "debit_to"])
+            if si_status == 1:
+                updated_je = False
                 for row in je_doc.accounts:
-                    if row.party_type == "Customer":
-                        row.reference_type = "Sales Invoice"
-                        row.reference_name = si_name
-                        row.account = si_doc.debit_to
+                    if row.party_type == "Customer" and row.party != "Shiprocket":
+                        if not row.reference_name:
+                            row.reference_type = "Sales Invoice"
+                            row.reference_name = cod_doc.sales_invoice
+                            row.account = debit_to
+                            row.user_remark = f"COD Collected for Sales Invoice {cod_doc.sales_invoice}"
+                            updated_je = True
                 
-                # Update JE remark
-                je_doc.remark = f"₹ {cod_doc.cod_amount:.2f} against Sales Invoice {si_name}"
-                
-                # Update user_remark for Supplier row
-                for row in je_doc.accounts:
-                    if row.party_type == "Supplier":
-                        row.user_remark = f"COD Collected for Sales Invoice {si_name}"
-                
-                je_doc.save()
-                
+                if updated_je:
+                    je_doc.remark = f"₹ {cod_doc.cod_amount:.2f} against Sales Invoice {cod_doc.sales_invoice}"
+                    je_doc.save()
+                    frappe.msgprint(
+                        f"Sales Invoice {cod_doc.sales_invoice} is submitted. Linked to Journal Entry.",
+                        indicator="blue"
+                    )
+            else:
                 frappe.msgprint(
-                    f"Sales Invoice {si_name} found and linked to Journal Entry",
-                    indicator="blue"
+                    f"Warning: Sales Invoice {cod_doc.sales_invoice} is still in draft. Journal Entry will be submitted without invoice allocation reference.",
+                    indicator="orange"
                 )
         
         # Submit Journal Entry
