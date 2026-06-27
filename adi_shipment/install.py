@@ -22,3 +22,9 @@ def after_install():
             }
         ]
     })
+
+    # Auto-create Shiprocket Customer and Supplier if they don't exist
+    from adi_shipment.api.cod_processing import setup_shiprocket_customer, setup_shiprocket_supplier
+    setup_shiprocket_customer()
+    setup_shiprocket_supplier()
+
