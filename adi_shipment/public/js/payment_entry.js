@@ -25,6 +25,10 @@ frappe.ui.form.on('Payment Entry', {
                     }
                 });
             }).addClass('btn-primary');
+
+            frm.add_custom_button(__('Fetch AWB'), function () {
+                fetch_awb_and_party_names(frm);
+            });
         }
     }
 });
@@ -134,78 +138,165 @@ function populate_payment_entry(frm, selected_cods) {
     
     frappe.db.get_value('Company', company, 'abbr', (val) => {
         let abbr = val.abbr;
-        let clearing_account = `COD - ${abbr}`;
         let freight_account = `Freight and Forwarding Charges - ${abbr}`;
         let cost_center = `Main - ${abbr}`;
         
-        // Safety fallback check for clearing account existence
-        frappe.db.exists('Account', clearing_account).then(exists => {
-            if (!exists) {
-                clearing_account = `Shiprocket COD Clearing - ${abbr}`;
-            }
-            
-            // Show custom grid columns programmatically
-            toggle_cod_grid_columns(frm, true);
+        // Show custom grid columns programmatically
+        toggle_cod_grid_columns(frm, true);
 
-            // 1. Programmatically bypass payable filter and set clearing account
-            frm.set_value('paid_from', clearing_account);
+        // 1. Clear and populate References table
+        frm.clear_table('references');
+        
+        let total_gross = 0.0;
+        let total_freight = 0.0;
+        
+        let paid_from_account = frm.doc.paid_from;
+        if (!paid_from_account) {
+            paid_from_account = `Debtors - ${abbr}`;
+        }
+        
+        selected_cods.forEach(cod => {
+            let row = frm.add_child('references');
+            row.reference_doctype = 'Journal Entry';
+            row.reference_name = cod.journal_entry_id;
+            row.total_amount = cod.cod_amount;
+            row.outstanding_amount = cod.cod_amount;
+            row.allocated_amount = cod.cod_amount;
+            row.account = paid_from_account;
+            row.bill_no = "AWB: " + cod.awb_number;
             
-            // 2. Clear and populate References table
-            frm.clear_table('references');
+            // Set the custom columns
+            row.custom_awb_no = cod.awb_number;
+            row.custom_party_name = cod.customer;
             
-            let total_gross = 0.0;
-            let total_freight = 0.0;
-            
-            selected_cods.forEach(cod => {
-                let row = frm.add_child('references');
-                row.reference_doctype = 'Journal Entry';
-                row.reference_name = cod.journal_entry_id;
-                row.total_amount = cod.cod_amount;
-                row.outstanding_amount = cod.cod_amount;
-                row.allocated_amount = cod.cod_amount;
-                row.bill_no = "AWB: " + cod.awb_number;
+            total_gross += flt(cod.cod_amount);
+            total_freight += flt(cod.shipment_amount);
+        });
+        
+        // 2. Set main net payout amount and remark
+        let net_amount = total_gross - total_freight;
+        frm.set_value('paid_amount', net_amount);
+        frm.set_value('received_amount', net_amount);
+        
+        let remark = `Reconciled COD Payments for:\n` + selected_cods.map(c => `- AWB: ${c.awb_number} (Ref: ${c.name}, JV: ${c.journal_entry_id || ''}, Invoice: ${c.sales_invoice || c.sales_order || ''}, Party: ${c.customer || ''})`).join('\n');
+        frm.set_value('remark', remark);
+        
+        // 3. Clear and populate Deductions/Loss table
+        frm.clear_table('deductions');
+        if (total_freight > 0) {
+            frappe.db.exists('Account', freight_account).then(f_exists => {
+                let fa = f_exists ? freight_account : null;
+                if (!fa) {
+                    fa = `Shipping Charges - ${abbr}`;
+                }
                 
-                // Set the custom columns
-                row.custom_awb_no = cod.awb_number;
-                row.custom_party_name = cod.customer;
-                
-                total_gross += flt(cod.cod_amount);
-                total_freight += flt(cod.shipment_amount);
-            });
-            
-            // 3. Set main net payout amount and remark
-            let net_amount = total_gross - total_freight;
-            frm.set_value('paid_amount', net_amount);
-            frm.set_value('received_amount', net_amount);
-            
-            let remark = `Reconciled COD Payments for:\n` + selected_cods.map(c => `- AWB: ${c.awb_number} (Ref: ${c.name}, Invoice: ${c.sales_invoice || c.sales_order || ''}, Party: ${c.customer || ''})`).join('\n');
-            frm.set_value('remark', remark);
-            
-            // 4. Clear and populate Deductions/Loss table
-            frm.clear_table('deductions');
-            if (total_freight > 0) {
-                frappe.db.exists('Account', freight_account).then(f_exists => {
-                    let fa = f_exists ? freight_account : null;
-                    if (fa) {
+                frappe.db.exists('Account', fa).then(fa_exists => {
+                    let final_fa = fa_exists ? fa : null;
+                    if (final_fa) {
                         let ded = frm.add_child('deductions');
-                        ded.account = fa;
+                        ded.account = final_fa;
                         ded.cost_center = cost_center;
                         ded.amount = total_freight;
                     }
                     frm.refresh_fields();
                 });
-            } else {
-                frm.refresh_fields();
-            }
-            
-            frappe.show_alert({
-                message: __('Linked {0} COD shipments to Payment Entry.').format(selected_cods.length),
-                indicator: 'green'
             });
+        } else {
+            frm.refresh_fields();
+        }
+        
+        frappe.show_alert({
+            message: __('Linked {0} COD shipments to Payment Entry.').format(selected_cods.length),
+            indicator: 'green'
         });
     });
 }
 
 function format_number(val) {
     return flt(val).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+}
+
+frappe.ui.form.on('Payment Entry Reference', {
+    reference_name: function (frm, cdt, cdn) {
+        let row = frappe.get_doc(cdt, cdn);
+        if (row.reference_doctype === 'Journal Entry' && row.reference_name) {
+            frappe.call({
+                method: 'frappe.client.get_list',
+                args: {
+                    doctype: 'COD',
+                    filters: {
+                        journal_entry_id: row.reference_name
+                    },
+                    fields: ['awb_number', 'customer'],
+                    limit: 1
+                },
+                callback: function (r) {
+                    if (r.message && r.message.length > 0) {
+                        let cod = r.message[0];
+                        frappe.model.set_value(cdt, cdn, 'custom_awb_no', cod.awb_number);
+                        frappe.model.set_value(cdt, cdn, 'custom_party_name', cod.customer);
+                        toggle_cod_grid_columns(frm, true);
+                    }
+                }
+            });
+        }
+    }
+});
+
+function fetch_awb_and_party_names(frm) {
+    let journal_entries = [];
+    if (frm.doc.references && frm.doc.references.length > 0) {
+        frm.doc.references.forEach(r => {
+            if (r.reference_doctype === 'Journal Entry' && r.reference_name) {
+                journal_entries.push(r.reference_name);
+            }
+        });
+    }
+
+    if (journal_entries.length === 0) {
+        frappe.msgprint(__('No Journal Entry references found to fetch AWB for.'));
+        return;
+    }
+
+    frappe.call({
+        method: 'frappe.client.get_list',
+        args: {
+            doctype: 'COD',
+            filters: {
+                journal_entry_id: ['in', journal_entries]
+            },
+            fields: ['journal_entry_id', 'awb_number', 'customer']
+        },
+        callback: function (r) {
+            if (r.message && r.message.length > 0) {
+                let cod_map = {};
+                r.message.forEach(cod => {
+                    cod_map[cod.journal_entry_id] = cod;
+                });
+
+                let updated_count = 0;
+                frm.doc.references.forEach(row => {
+                    if (row.reference_doctype === 'Journal Entry' && row.reference_name && cod_map[row.reference_name]) {
+                        let cod = cod_map[row.reference_name];
+                        row.custom_awb_no = cod.awb_number;
+                        row.custom_party_name = cod.customer;
+                        updated_count++;
+                    }
+                });
+
+                if (updated_count > 0) {
+                    frm.refresh_field('references');
+                    toggle_cod_grid_columns(frm, true);
+                    frappe.show_alert({
+                        message: __('Fetched AWB & Party Names for {0} references.').format(updated_count),
+                        indicator: 'green'
+                    });
+                } else {
+                    frappe.msgprint(__('No matching COD documents found for the referenced journal entries.'));
+                }
+            } else {
+                frappe.msgprint(__('No matching COD documents found for the referenced journal entries.'));
+            }
+        }
+    });
 }

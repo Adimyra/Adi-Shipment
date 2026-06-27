@@ -7,9 +7,8 @@ def on_submit_shipment_create_cod(doc, method):
     """
     On Submit Hook for Shipment:
     - Creates COD document if payment_method is COD
-    - Creates draft Journal Entry
     - Links all related documents (Delivery Note, Sales Order, Sales Invoice)
-    - Updates COD document with journal_entry_id
+    - Automatically sets status of COD document to "Pending"
     """
     # Only process if payment method is COD
     if doc.payment_method != "COD":
@@ -22,6 +21,9 @@ def on_submit_shipment_create_cod(doc, method):
         return
 
     try:
+        # Ensure Shiprocket Customer exists
+        setup_shiprocket_customer()
+
         # Get linked Sales Invoice
         si_name, si_doc = get_linked_sales_invoice(doc)
         
@@ -62,19 +64,19 @@ def on_submit_shipment_create_cod(doc, method):
             cod_amount=cod_amount
         )
         
-        # Always create Draft Journal Entry (use Sales Order if Sales Invoice not found)
+        # Create and submit Journal Entry to transfer receivable to Shiprocket
         je_name = create_cod_journal_entry(
-            doc, 
-            si_doc, 
-            sales_order,
-            cod_doc_name, 
-            cod_amount
+            shipment_doc=doc,
+            si_doc=si_doc,
+            sales_order=sales_order,
+            cod_doc_name=cod_doc_name,
+            cod_amount=cod_amount
         )
         
-        # Update COD document with journal_entry_id
+        # Set COD document fields
         cod_doc = frappe.get_doc("COD", cod_doc_name)
         cod_doc.journal_entry_id = je_name
-        cod_doc.journal_status = "Draft"
+        cod_doc.journal_status = "Submitted"
         cod_doc.status = "Pending"
         cod_doc.save()
         
@@ -95,11 +97,8 @@ def on_submit_shipment_create_cod(doc, method):
         <div style="margin-bottom: 8px;">
             💰 COD Document: <a href="/app/cod/{cod_doc_name}" style="font-weight: bold; color: #2490ef;">{cod_doc_name}</a>
         </div>
-        <div style="margin-bottom: 8px;">
-            📝 Journal Entry (Draft): <a href="/app/journal-entry/{je_name}" style="font-weight: bold; color: #2490ef;">{je_name}</a>
-        </div>
         <div style="margin-top: 12px; padding: 8px; background-color: #f0f4f7; border-left: 3px solid #2490ef;">
-            <small>💡 Next Step: Open COD document and click <strong>"Verify COD"</strong> to submit the Journal Entry</small>
+            <small>💡 Next Step: Outstanding invoice will be settled when the Shiprocket bulk payout/Payment Entry is submitted.</small>
         </div>
         """
         
@@ -110,13 +109,10 @@ def on_submit_shipment_create_cod(doc, method):
             as_list=False
         )
         
-        # No explicit commit here to allow atomic transaction with Shipment submission
-        pass
-        
     except Exception as e:
         # Log error but don't block shipment submission
         frappe.log_error(
-            f"Error creating COD for Shipment {doc.name}: {str(e)}\\n\\nTraceback:\\n{frappe.get_traceback()}",
+            f"Error creating COD for Shipment {doc.name}: {str(e)}\n\nTraceback:\n{frappe.get_traceback()}",
             "COD Creation Error"
         )
         frappe.msgprint(
@@ -124,13 +120,11 @@ def on_submit_shipment_create_cod(doc, method):
             title="COD Creation Failed",
             indicator="orange"
         )
-        # Don't throw - allow shipment to be submitted anyway
 
 
 def on_cancel_shipment_cancel_cod(doc, method):
     """
     On Cancel Hook for Shipment:
-    - Automatically cancels Journal Entry if submitted
     - Cancels related COD document
     - Updates status to Cancelled
     """
@@ -143,7 +137,7 @@ def on_cancel_shipment_cancel_cod(doc, method):
         cod_docs = frappe.get_all(
             "COD",
             filters={"shipment_id": doc.name},
-            fields=["name", "journal_entry_id", "journal_status", "sales_invoice", "sales_order"]
+            fields=["name", "status"]
         )
         
         if not cod_docs:
@@ -157,52 +151,23 @@ def on_cancel_shipment_cancel_cod(doc, method):
                     _("Cannot cancel Shipment {0} because the COD transaction {1} has already been reconciled and Paid.").format(doc.name, cod.name)
                 )
             
-            # If Journal Entry is submitted, cancel it first
-            if cod.journal_status == "Submitted" and cod.journal_entry_id:
-                try:
-                    je_doc = frappe.get_doc("Journal Entry", cod.journal_entry_id)
-                    
-                    if je_doc.docstatus == 1:  # Submitted
-                        # Cancel the Journal Entry
-                        je_doc.flags.ignore_permissions = True
-                        je_doc.cancel()
-                        
-                        frappe.msgprint(
-                            f"Journal Entry {je_doc.name} cancelled automatically",
-                            indicator="orange"
-                        )
-                        
-                        # Update COD journal status using db_set
-                        cod_doc.db_set("journal_status", "Cancelled")
-                        
-                    elif je_doc.docstatus == 0: # Draft
-                        # Delete the Draft Journal Entry
-                        frappe.delete_doc("Journal Entry", je_doc.name, ignore_permissions=True)
-                        
-                        frappe.msgprint(
-                            f"Draft Journal Entry {je_doc.name} deleted automatically",
-                            indicator="orange"
-                        )
-                        
-                        # Update COD journal status to None/Empty or Cancelled
-                        cod_doc.db_set("journal_status", "Cancelled")
-                        cod_doc.db_set("journal_entry_id", None)
-                        
-                except Exception as je_error:
-                    frappe.log_error(
-                        message=f"Failed to cancel/delete JE {cod.journal_entry_id}: {str(je_error)}",
-                        title=f"JE Cancel Error - {doc.name}"
-                    )
-                    frappe.throw(
-                        f"Cannot cancel/delete Journal Entry {cod.journal_entry_id}. Please handle it manually."
+            # Cancel the related Journal Entry if exists
+            if cod_doc.journal_entry_id:
+                if frappe.db.get_value("Journal Entry", cod_doc.journal_entry_id, "docstatus") == 1:
+                    je_doc = frappe.get_doc("Journal Entry", cod_doc.journal_entry_id)
+                    je_doc.cancel()
+                    cod_doc.db_set("journal_status", "Cancelled")
+                    frappe.msgprint(
+                        f"Journal Entry {cod_doc.journal_entry_id} cancelled successfully.",
+                        indicator="orange"
                     )
             
-            # Update COD status to Cancelled using db_set to avoid validation errors with legacy data
+            # Update COD status to Cancelled
             cod_doc.db_set("status", "Cancelled")
-            cod_doc.db_set("payment_status", "Paid")
+            cod_doc.db_set("payment_status", "Paid")  # Set to Paid so it's no longer due
             
             frappe.msgprint(
-                f"COD Document {cod.name} cancelled and marked as Paid (not due)",
+                f"COD Document {cod.name} status updated to Cancelled",
                 indicator="orange"
             )
         
@@ -237,11 +202,9 @@ def create_cod_document(doc, delivery_note, sales_order, sales_invoice, cod_amou
 
 def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, cod_amount):
     """
-    Creates a Draft Journal Entry to transfer COD amount from Customer to Shiprocket Supplier.
-    Credit: Customer (Reduces receivable from Customer)
-    Debit: Supplier (Creates payable to Shiprocket)
-    
-    Uses Sales Invoice if available, otherwise uses Sales Order
+    Creates and submits a Journal Entry to transfer COD amount from End Buyer to Shiprocket Customer.
+    Debit: Shiprocket Customer (Creates receivable from Shiprocket)
+    Credit: End Buyer (Reduces receivable from Customer against Sales Invoice)
     """
     amount = cod_amount
     
@@ -256,14 +219,12 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
     cost_center = None
     
     if si_doc:
-        # Use Sales Invoice details
         company = si_doc.company
         customer = si_doc.customer
         reference_type = "Sales Invoice"
         reference_name = si_doc.name
         cost_center = si_doc.items[0].cost_center if si_doc.items else None
     elif sales_order:
-        # Use Sales Order details
         so_doc = frappe.get_doc("Sales Order", sales_order)
         company = so_doc.company
         customer = so_doc.customer
@@ -271,64 +232,42 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
         reference_name = so_doc.name
         cost_center = so_doc.items[0].cost_center if so_doc.items else None
     else:
-        # Fallback to defaults
         company = frappe.defaults.get_user_default("Company")
-        customer = None  # Will be set manually later
-    
+        customer = None
+        
+    if not company:
+        frappe.throw("Company could not be resolved for the Journal Entry.")
+        
     company_abbr = frappe.get_value("Company", company, "abbr")
     
-    # Get accounts
-    try:
-        if si_doc:
-            debtors_account = si_doc.debit_to
-        else:
-            debtors_account = f"Debtors - {company_abbr}"
+    # Standard Debtors account of the company
+    debtors_account = f"Debtors - {company_abbr}"
+    if si_doc and si_doc.debit_to:
+        debtors_account = si_doc.debit_to
         
-        clearing_account = get_cod_clearing_account(company)
-            
-    except Exception as e:
-        frappe.throw(f"Error fetching accounts: {str(e)}")
-    
-    # Set default cost center if not found
     if not cost_center:
         cost_center = f"Main - {company_abbr}"
     
     # Create Journal Entry
     je = frappe.new_doc("Journal Entry")
     je.voucher_type = "Journal Entry"
-    je.posting_date = getdate()
+    # Use Sales Invoice posting date if available, otherwise today
+    je.posting_date = si_doc.posting_date if si_doc else (shipment_doc.posting_date or getdate())
     je.company = company
     
-    # Set title based on clearing account
-    je.title = clearing_account.split(" - ")[0] if " - " in clearing_account else "COD Clearing"
+    je.title = f"COD - {customer or 'Unknown'} - Shiprocket"
+    je.remark = f"COD Receivable of ₹{amount:.2f} transferred from {customer or 'Unknown'} to Shiprocket for Shipment {shipment_doc.name}."
     
-    # Set remark based on reference document
-    if si_doc:
-        je.remark = f"₹ {amount:.2f} against Sales Invoice {si_doc.name}"
-    elif sales_order:
-        je.remark = f"₹ {amount:.2f} against Sales Order {sales_order}"
-    else:
-        je.remark = f"COD Collection for Shipment {shipment_doc.name}"
-    
-    # Row 1: Debit Clearing Account (COD Cash in Transit)
-    row1 = {
-        "account": clearing_account,
+    # Row 1: Debit Shiprocket (Customer)
+    je.append("accounts", {
+        "account": debtors_account,
+        "party_type": "Customer",
+        "party": "Shiprocket",
         "debit_in_account_currency": amount,
         "credit_in_account_currency": 0,
-        "user_remark": f"COD Collected for {reference_type} {reference_name}" if reference_type else f"COD Collected for Shipment {shipment_doc.name}",
         "cost_center": cost_center,
         "against_account": customer if customer else ""
-    }
-    
-    # Safety Check: If clearing account type is Receivable (like COD - ZV), ERPNext requires a Customer party
-    clearing_account_type = frappe.db.get_value("Account", clearing_account, "account_type")
-    if clearing_account_type == "Receivable" and customer:
-        row1.update({
-            "party_type": "Customer",
-            "party": customer
-        })
-        
-    je.append("accounts", row1)
+    })
     
     # Row 2: Credit Customer (Customer has paid via COD)
     je.append("accounts", {
@@ -340,10 +279,11 @@ def create_cod_journal_entry(shipment_doc, si_doc, sales_order, cod_doc_name, co
         "reference_type": reference_type,
         "reference_name": reference_name,
         "cost_center": cost_center,
-        "against_account": clearing_account
+        "against_account": "Shiprocket"
     })
     
     je.insert(ignore_permissions=True)
+    je.submit()
     
     return je.name
 
@@ -392,6 +332,16 @@ def setup_shiprocket_supplier():
         supp.insert(ignore_permissions=True)
         frappe.msgprint("Created Supplier: Shiprocket", indicator="blue")
 
+def setup_shiprocket_customer():
+    """Ensures Shiprocket Customer exists"""
+    if not frappe.db.exists("Customer", "Shiprocket"):
+        cust = frappe.new_doc("Customer")
+        cust.customer_name = "Shiprocket"
+        cust.customer_group = frappe.db.get_value("Customer Group", {"is_group": 0}, "name") or "Individual"
+        cust.customer_type = "Company"
+        cust.insert(ignore_permissions=True)
+        frappe.msgprint("Created Customer: Shiprocket", indicator="blue")
+
 
 def get_linked_sales_invoice(shipment_doc):
     """
@@ -425,42 +375,6 @@ def get_linked_sales_invoice(shipment_doc):
 @frappe.whitelist()
 def create_je_for_cod(cod_name):
     """
-    Creates a draft Journal Entry for a COD document that doesn't have one linked.
+    Deprecated manual Journal Entry creation.
     """
-    cod_doc = frappe.get_doc("COD", cod_name)
-    if cod_doc.journal_entry_id:
-        frappe.throw(_("Journal Entry is already created and linked: {0}").format(cod_doc.journal_entry_id))
-        
-    if not cod_doc.shipment_id:
-        frappe.throw(_("No linked Shipment found in COD document {0}").format(cod_name))
-        
-    shipment_doc = frappe.get_doc("Shipment", cod_doc.shipment_id)
-    
-    # Try to find/traverse Sales Invoice
-    si_name, si_doc = get_linked_sales_invoice(shipment_doc)
-    
-    # If no Sales Invoice found, look at COD document's sales_invoice field
-    if not si_name and cod_doc.sales_invoice:
-        si_name = cod_doc.sales_invoice
-        si_doc = frappe.get_doc("Sales Invoice", si_name)
-        
-    # Check if Sales Invoice exists
-    if not si_name:
-        frappe.throw(_("Cannot create Journal Entry. No linked Sales Invoice found for Shipment {0}. Please ensure a Sales Invoice is created and linked first.").format(cod_doc.shipment_id))
-        
-    # Create the Journal Entry
-    je_name = create_cod_journal_entry(
-        shipment_doc, 
-        si_doc, 
-        cod_doc.sales_order,
-        cod_doc.name, 
-        cod_doc.cod_amount
-    )
-    
-    # Link to COD doc and update status
-    cod_doc.db_set("journal_entry_id", je_name)
-    cod_doc.db_set("journal_status", "Draft")
-    cod_doc.db_set("status", "Pending")
-    
-    frappe.db.commit()
-    return je_name
+    frappe.throw(_("Manual Journal Entry creation is deprecated. Please reconcile and settle Sales Invoices directly using Payment Entries."))

@@ -1,6 +1,6 @@
 frappe.ui.form.on('COD', {
     refresh: function (frm) {
-        // Add "Verify COD" button if status is Pending and Journal Entry is Draft
+        // Add "Verify COD" button if status is Pending and Journal Entry is Draft (for backward compatibility)
         if (frm.doc.journal_entry_id && ["Pending", "Draft"].includes(frm.doc.status) && frm.doc.journal_status !== "Submitted") {
             frm.add_custom_button(__('Verify COD'), function () {
                 frappe.call({
@@ -23,33 +23,17 @@ frappe.ui.form.on('COD', {
             }).addClass('btn-primary');
         }
 
-        // Add "Create Journal Entry" button if journal_entry_id is missing and status is Draft/Pending
-        if (!frm.doc.journal_entry_id && ["Pending", "Draft"].includes(frm.doc.status)) {
-            frm.add_custom_button(__('Create Journal Entry'), function () {
-                frappe.call({
-                    method: 'adi_shipment.api.cod_processing.create_je_for_cod',
-                    args: {
-                        cod_name: frm.doc.name
-                    },
-                    freeze: true,
-                    freeze_message: __("Creating Journal Entry..."),
-                    callback: function (r) {
-                        if (!r.exc) {
-                            frappe.show_alert({
-                                message: __('Journal Entry created successfully'),
-                                indicator: 'green'
-                            });
-                            frm.reload_doc();
-                        }
-                    }
-                });
-            }).addClass('btn-primary');
-        }
-
-        // Add button to view Journal Entry
+        // Add button to view Journal Entry (for backward compatibility)
         if (frm.doc.journal_entry_id) {
             frm.add_custom_button(__('View Journal Entry'), function () {
                 frappe.set_route('Form', 'Journal Entry', frm.doc.journal_entry_id);
+            });
+        }
+
+        // Add button to view Payment Entry
+        if (frm.doc.payment_entry_id) {
+            frm.add_custom_button(__('View Payment Entry'), function () {
+                frappe.set_route('Form', 'Payment Entry', frm.doc.payment_entry_id);
             });
         }
 

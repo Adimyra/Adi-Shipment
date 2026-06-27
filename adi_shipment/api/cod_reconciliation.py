@@ -3,7 +3,7 @@ import io
 import frappe
 from frappe import _
 from frappe.utils import getdate
-from adi_shipment.api.cod_processing import get_cod_clearing_account
+from adi_shipment.api.cod_processing import setup_shiprocket_customer
 
 @frappe.whitelist()
 def reconcile_shiprocket_payout(file_url, bank_account, posting_date):
@@ -78,7 +78,7 @@ def reconcile_shiprocket_payout(file_url, bank_account, posting_date):
         cod_docs = frappe.get_all(
             "COD",
             filters={"awb_number": awb},
-            fields=["name", "status", "cod_amount", "sales_invoice", "sales_order", "company"]
+            fields=["name", "status", "cod_amount", "sales_invoice", "sales_order", "journal_entry_id"]
         )
 
         if not cod_docs:
@@ -107,6 +107,15 @@ def reconcile_shiprocket_payout(file_url, bank_account, posting_date):
         except ValueError:
             row_net = row_gross - row_freight
 
+        # Resolve company dynamically
+        company_name = None
+        if cod_doc.sales_invoice:
+            company_name = frappe.db.get_value("Sales Invoice", cod_doc.sales_invoice, "company")
+        if not company_name and cod_doc.sales_order:
+            company_name = frappe.db.get_value("Sales Order", cod_doc.sales_order, "company")
+        if not company_name:
+            company_name = frappe.defaults.get_user_default("Company") or frappe.get_all("Company", limit=1)[0].name
+
         total_gross_cod += row_gross
         total_freight += row_freight
         total_net_payout += row_net
@@ -119,7 +128,8 @@ def reconcile_shiprocket_payout(file_url, bank_account, posting_date):
             "net": row_net,
             "sales_invoice": cod_doc.sales_invoice,
             "sales_order": cod_doc.sales_order,
-            "company": cod_doc.company
+            "company": company_name,
+            "journal_entry_id": cod_doc.journal_entry_id
         })
 
     if not success_matches:
@@ -130,11 +140,13 @@ def reconcile_shiprocket_payout(file_url, bank_account, posting_date):
             msg += _("Already paid AWBs: {0}.").format(", ".join(already_paid[:5]))
         frappe.throw(msg)
 
+    # Ensure Shiprocket Customer exists
+    setup_shiprocket_customer()
+
     # 4. Determine Company and Accounts
     first_match = success_matches[0]
     company = first_match["company"]
     company_abbr = frappe.get_value("Company", company, "abbr")
-    clearing_account = get_cod_clearing_account(company)
     freight_account = get_freight_expense_account(company)
 
     # Check rounding adjustment
@@ -142,72 +154,64 @@ def reconcile_shiprocket_payout(file_url, bank_account, posting_date):
     if abs(difference) > 0 and abs(difference) < 5.00:
         total_net_payout = round(total_net_payout + difference, 2)
 
-    # 5. Create Consolidated Journal Entry
-    je = frappe.new_doc("Journal Entry")
-    je.voucher_type = "Journal Entry"
-    je.posting_date = getdate(posting_date)
-    je.company = company
+    # 5. Create Programmatic Payment Entry (Settle Journal Entries natively)
+    from erpnext.accounts.party import get_party_account
+    
+    paid_from = get_party_account("Customer", "Shiprocket", company)
+    if not paid_from:
+        paid_from = f"Debtors - {company_abbr}"
+
+    pe = frappe.new_doc("Payment Entry")
+    pe.payment_type = "Receive"
+    pe.party_type = "Customer"
+    pe.party = "Shiprocket"
+    pe.company = company
+    pe.posting_date = getdate(posting_date)
+    pe.paid_from = paid_from
+    pe.paid_to = bank_account
+    pe.paid_amount = total_net_payout
+    pe.received_amount = total_net_payout
     
     file_name = file_doc.file_name or "Shiprocket CSV"
-    je.remark = f"Shiprocket COD Payout Settlement | Ref: {file_name} | Matched {len(success_matches)} shipments"
+    pe.reference_no = file_name
+    pe.reference_date = getdate(posting_date)
+    pe.remarks = f"Shiprocket COD Payout Settlement | Ref: {file_name} | Matched {len(success_matches)} shipments"
 
-    # Row 1: Debit Bank Account (Net received)
-    je.append("accounts", {
-        "account": bank_account,
-        "debit_in_account_currency": total_net_payout,
-        "credit_in_account_currency": 0,
-        "user_remark": f"Net remittance deposited to bank from {file_name}",
-        "cost_center": f"Main - {company_abbr}"
-    })
-
-    # Row 2: Debit Freight Expense (Courier fees)
-    if total_freight > 0 and freight_account:
-        je.append("accounts", {
-            "account": freight_account,
-            "debit_in_account_currency": total_freight,
-            "credit_in_account_currency": 0,
-            "user_remark": f"Shiprocket courier fees deducted",
-            "cost_center": f"Main - {company_abbr}"
+    for match in success_matches:
+        customer = None
+        if match["sales_invoice"]:
+            customer = frappe.db.get_value("Sales Invoice", match["sales_invoice"], "customer")
+                
+        pe.append("references", {
+            "reference_doctype": "Journal Entry",
+            "reference_name": match["journal_entry_id"],
+            "total_amount": match["gross"],
+            "outstanding_amount": match["gross"],
+            "allocated_amount": match["gross"],
+            "account": paid_from,
+            "bill_no": f"AWB: {match['awb']}",
+            "custom_awb_no": match["awb"],
+            "custom_party_name": customer
         })
 
-    # Credits: One line per matched shipment to credit the clearing account
-    clearing_account_type = frappe.db.get_value("Account", clearing_account, "account_type")
-    
-    for match in success_matches:
-        credit_row = {
-            "account": clearing_account,
-            "debit_in_account_currency": 0,
-            "credit_in_account_currency": match["gross"],
-            "user_remark": f"Reconciliation for AWB {match['awb']} (Doc: {match['cod_doc']})",
+    # Add Deductions (Freight Expense)
+    if total_freight > 0 and freight_account:
+        pe.append("deductions", {
+            "account": freight_account,
             "cost_center": f"Main - {company_abbr}",
-            "against_account": bank_account
-        }
-        
-        # Safety Check: If clearing account type is Receivable (like COD - ZV), ERPNext requires a Customer party
-        if clearing_account_type == "Receivable":
-            cust = None
-            if match["sales_invoice"]:
-                cust = frappe.db.get_value("Sales Invoice", match["sales_invoice"], "customer")
-            elif match["sales_order"]:
-                cust = frappe.db.get_value("Sales Order", match["sales_order"], "customer")
-                
-            if cust:
-                credit_row.update({
-                    "party_type": "Customer",
-                    "party": cust
-                })
-                
-        je.append("accounts", credit_row)
+            "amount": total_freight,
+            "description": f"Shiprocket courier fees deducted from payout"
+        })
 
-    je.insert(ignore_permissions=True)
-    je.submit()
+    pe.insert(ignore_permissions=True)
+    pe.submit()
 
     # 6. Update COD Records
     for match in success_matches:
         cod = frappe.get_doc("COD", match["cod_doc"])
         cod.db_set("status", "Paid")
         cod.db_set("payment_status", "Paid")
-        cod.db_set("payment_entry_id", je.name)
+        cod.db_set("payment_entry_id", pe.name)
 
     frappe.db.commit()
 
@@ -217,7 +221,7 @@ def reconcile_shiprocket_payout(file_url, bank_account, posting_date):
         <strong>🎉 COD Reconciliation Complete</strong>
     </div>
     <div style="margin-bottom: 8px;">
-        📝 Journal Entry: <a href="/app/journal-entry/{je.name}" style="font-weight: bold; color: #10b981;">{je.name}</a> (Submitted)
+        📝 Payment Entry: <a href="/app/payment-entry/{pe.name}" style="font-weight: bold; color: #10b981;">{pe.name}</a> (Submitted)
     </div>
     <div style="margin-bottom: 8px;">
         📦 Matched & Paid Shipments: <strong>{len(success_matches)}</strong>
@@ -248,7 +252,7 @@ def reconcile_shiprocket_payout(file_url, bank_account, posting_date):
     )
 
     return {
-        "journal_entry": je.name,
+        "payment_entry": pe.name,
         "matched_count": len(success_matches),
         "unmatched_count": len(unmatched_awbs)
     }
@@ -299,28 +303,48 @@ def get_freight_expense_account(company):
 @frappe.whitelist()
 def get_pending_cod_settlements():
     """
-    Returns a list of COD documents that have been journalized but are not yet paid,
+    Returns a list of COD documents that are pending payout,
     specifically for display in the Payment Entry helper.
     """
     records = frappe.get_all(
         "COD",
-        filters={"status": "Journal Submitted", "journal_entry_id": ["not in", [None, ""]]},
+        filters={"status": "Pending", "sales_invoice": ["not in", [None, ""]]},
         fields=["name", "awb_number", "sales_invoice", "sales_order", "cod_amount", "shipment_amount", "journal_entry_id"]
     )
     
-    # Resolve the company and customer for each record dynamically
+    # Resolve the company, customer, grand_total, outstanding_amount, and debit_to for each record dynamically
     for r in records:
         company = None
         customer = None
+        debit_to = None
+        grand_total = 0.0
+        outstanding_amount = 0.0
+        
         if r.sales_invoice:
-            company, customer = frappe.db.get_value("Sales Invoice", r.sales_invoice, ["company", "customer"])
+            si_data = frappe.db.get_value(
+                "Sales Invoice", 
+                r.sales_invoice, 
+                ["company", "customer", "debit_to", "grand_total", "outstanding_amount"], 
+                as_dict=True
+            )
+            if si_data:
+                company = si_data.company
+                customer = si_data.customer
+                debit_to = si_data.debit_to
+                grand_total = si_data.grand_total
+                outstanding_amount = si_data.outstanding_amount
+                
         if not company and r.sales_order:
             company, customer = frappe.db.get_value("Sales Order", r.sales_order, ["company", "customer"])
+            
         if not company:
             company = frappe.defaults.get_user_default("Company") or frappe.get_all("Company", limit=1)[0].name
             
         r["company"] = company
         r["customer"] = customer
+        r["debit_to"] = debit_to
+        r["grand_total"] = grand_total
+        r["outstanding_amount"] = outstanding_amount
         
     return records
 
@@ -335,7 +359,7 @@ def on_submit_payment_entry_update_cod(doc, method):
         if ref.reference_doctype == "Journal Entry":
             cod_names = frappe.get_all(
                 "COD",
-                filters={"journal_entry_id": ref.reference_name},
+                filters={"journal_entry_id": ref.reference_name, "status": "Pending"},
                 fields=["name"]
             )
             for cod in cod_names:
@@ -349,17 +373,17 @@ def on_cancel_payment_entry_rollback_cod(doc, method):
     """
     Triggered on Payment Entry cancel.
     If the Payment Entry references any Journal Entries linked to COD documents,
-    rollback those COD documents back to "Journal Submitted".
+    rollback those COD documents back to "Pending".
     """
     for ref in doc.references:
         if ref.reference_doctype == "Journal Entry":
             cod_names = frappe.get_all(
                 "COD",
-                filters={"journal_entry_id": ref.reference_name},
+                filters={"journal_entry_id": ref.reference_name, "payment_entry_id": doc.name},
                 fields=["name"]
             )
             for cod in cod_names:
                 cod_doc = frappe.get_doc("COD", cod.name)
-                cod_doc.db_set("status", "Journal Submitted")
+                cod_doc.db_set("status", "Pending")
                 cod_doc.db_set("payment_status", "Due")
                 cod_doc.db_set("payment_entry_id", None)
