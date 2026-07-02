@@ -221,14 +221,9 @@ frappe.ui.form.on('Payment Entry Reference', {
         let row = frappe.get_doc(cdt, cdn);
         if (row.reference_doctype === 'Journal Entry' && row.reference_name) {
             frappe.call({
-                method: 'frappe.client.get_list',
+                method: 'adi_shipment.api.cod_reconciliation.get_awb_and_party_names',
                 args: {
-                    doctype: 'COD',
-                    filters: {
-                        journal_entry_id: row.reference_name
-                    },
-                    fields: ['awb_number', 'customer'],
-                    limit: 1
+                    journal_entries: [row.reference_name]
                 },
                 callback: function (r) {
                     if (r.message && r.message.length > 0) {
@@ -259,13 +254,9 @@ function fetch_awb_and_party_names(frm) {
     }
 
     frappe.call({
-        method: 'frappe.client.get_list',
+        method: 'adi_shipment.api.cod_reconciliation.get_awb_and_party_names',
         args: {
-            doctype: 'COD',
-            filters: {
-                journal_entry_id: ['in', journal_entries]
-            },
-            fields: ['journal_entry_id', 'awb_number', 'customer']
+            journal_entries: journal_entries
         },
         callback: function (r) {
             if (r.message && r.message.length > 0) {

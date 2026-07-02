@@ -387,3 +387,33 @@ def on_cancel_payment_entry_rollback_cod(doc, method):
                 cod_doc.db_set("status", "Journal Submitted")
                 cod_doc.db_set("payment_status", "Due")
                 cod_doc.db_set("payment_entry_id", None)
+
+
+@frappe.whitelist()
+def get_awb_and_party_names(journal_entries):
+    """
+    Returns a list of COD details (awb_number, customer) for the given journal entry IDs.
+    """
+    import json
+    if isinstance(journal_entries, str):
+        journal_entries = json.loads(journal_entries)
+
+    if not journal_entries:
+        return []
+
+    records = frappe.get_all(
+        "COD",
+        filters={"journal_entry_id": ["in", journal_entries]},
+        fields=["journal_entry_id", "awb_number", "sales_invoice", "sales_order"]
+    )
+
+    for r in records:
+        customer = None
+        if r.sales_invoice:
+            customer = frappe.db.get_value("Sales Invoice", r.sales_invoice, "customer")
+        if not customer and r.sales_order:
+            customer = frappe.db.get_value("Sales Order", r.sales_order, "customer")
+        r["customer"] = customer
+
+    return records
+
