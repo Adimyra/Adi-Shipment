@@ -20,6 +20,15 @@ def after_install():
                 "insert_after": "payment_method",
                 "read_only": 1
             }
+        ],
+        "Payment Entry": [
+            {
+                "fieldname": "custom_fetch_awb",
+                "label": "Fetch AWB",
+                "fieldtype": "Button",
+                "insert_after": "get_outstanding_orders",
+                "depends_on": "eval:doc.docstatus === 0 && doc.payment_type === 'Receive'"
+            }
         ]
     })
 

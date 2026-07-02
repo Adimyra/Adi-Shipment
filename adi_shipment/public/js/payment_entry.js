@@ -25,11 +25,10 @@ frappe.ui.form.on('Payment Entry', {
                     }
                 });
             }).addClass('btn-primary');
-
-            frm.add_custom_button(__('Fetch AWB'), function () {
-                fetch_awb_and_party_names(frm);
-            });
         }
+    },
+    custom_fetch_awb: function (frm) {
+        fetch_awb_and_party_names(frm);
     }
 });
 
