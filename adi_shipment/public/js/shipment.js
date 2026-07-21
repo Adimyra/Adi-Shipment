@@ -1,5 +1,36 @@
 frappe.ui.form.on('Shipment', {
     refresh: function (frm) {
+        // Auto-fetch contact details if customer is set but contact name/display is empty on a new Shipment
+        if (frm.is_new()) {
+            if (frm.doc.delivery_customer && !frm.doc.delivery_contact_name) {
+                if (!frm.doc.delivery_to_type) {
+                    frm.set_value('delivery_to_type', 'Customer');
+                }
+                frm.trigger('delivery_customer');
+            } else if (frm.doc.delivery_contact_name) {
+                frm.trigger('delivery_contact_name');
+            }
+
+            // Check if contact display has a valid phone number, notify if missing
+            setTimeout(function () {
+                if (frm.doc.delivery_contact) {
+                    var digits = frm.doc.delivery_contact.replace(/\D/g, '');
+                    if (digits.length < 10) {
+                        frappe.show_alert({
+                            message: __("Customer contact has no valid phone number. Default number (9934173500) will be used for Shiprocket."),
+                            indicator: "orange"
+                        });
+                    }
+                } else {
+                    // Alert if contact display itself is completely empty
+                    frappe.show_alert({
+                        message: __("Customer contact has no valid phone number. Default number (9934173500) will be used for Shiprocket."),
+                        indicator: "orange"
+                    });
+                }
+            }, 2500);
+        }
+
         // Only show actions if document is saved and not submitted
         if (!frm.is_new() && frm.doc.docstatus === 0) {
 
@@ -193,18 +224,18 @@ function open_courier_dialog(frm) {
             method: 'adi_shipment.api.shiprocket.get_courier_serviceability',
             args: { shipment_name: frm.doc.name, use_volumetric: use_volumetric },
             callback: function (r) {
-            if (r.message && r.message.shiprocket_response && r.message.shiprocket_response.data) {
-                let data = r.message.shiprocket_response.data;
-                let ctx = r.message.context || {};
-                let couriers = data.available_courier_companies || [];
+                if (r.message && r.message.shiprocket_response && r.message.shiprocket_response.data) {
+                    let data = r.message.shiprocket_response.data;
+                    let ctx = r.message.context || {};
+                    let couriers = data.available_courier_companies || [];
 
-                // Sort by rate
-                couriers.sort((a, b) => a.rate - b.rate);
+                    // Sort by rate
+                    couriers.sort((a, b) => a.rate - b.rate);
 
-                let min_rate = couriers.length ? couriers[0].rate : 0;
-                let min_days = couriers.length ? Math.min(...couriers.map(c => c.estimated_delivery_days)) : 0;
+                    let min_rate = couriers.length ? couriers[0].rate : 0;
+                    let min_days = couriers.length ? Math.min(...couriers.map(c => c.estimated_delivery_days)) : 0;
 
-                let html = `
+                    let html = `
                     <style>
                         .sr-container { font-family: 'Inter', sans-serif; color: #1f2937; }
                         
@@ -291,17 +322,17 @@ function open_courier_dialog(frm) {
                         <div class="sr-list">
                 `;
 
-                if (couriers.length === 0) {
-                    html += `<div class="text-center text-muted p-4">No couriers available for this route.</div>`;
-                } else {
-                    couriers.forEach(c => {
-                        let badges = '';
-                        if (c.rate === min_rate) badges += `<span class="sr-badge bg-blue">Cheapest</span>`;
-                        if (c.estimated_delivery_days === min_days) badges += `<span class="sr-badge bg-green">Fastest</span>`;
+                    if (couriers.length === 0) {
+                        html += `<div class="text-center text-muted p-4">No couriers available for this route.</div>`;
+                    } else {
+                        couriers.forEach(c => {
+                            let badges = '';
+                            if (c.rate === min_rate) badges += `<span class="sr-badge bg-blue">Cheapest</span>`;
+                            if (c.estimated_delivery_days === min_days) badges += `<span class="sr-badge bg-green">Fastest</span>`;
 
-                        let logo = c.courier_name.charAt(0).toUpperCase();
+                            let logo = c.courier_name.charAt(0).toUpperCase();
 
-                        html += `
+                            html += `
                             <div class="sr-card">
                                 <div class="sr-logo">${logo}</div>
                                 <div class="sr-info">
@@ -326,28 +357,28 @@ function open_courier_dialog(frm) {
                                 >Ship Now</button>
                             </div>
                         `;
+                        });
+                    }
+
+                    html += `</div></div>`; // Close list and container
+
+                    let $wrapper = d.get_field('ui_html').$wrapper;
+                    $wrapper.html(html);
+
+                    // Bind Checkbox
+                    $wrapper.find('#sr-use-volumetric').on('change', function () {
+                        let is_checked = $(this).is(':checked');
+                        fetch_rates(is_checked ? 1 : 0);
                     });
-                }
 
-                html += `</div></div>`; // Close list and container
+                    // Bind Click
+                    $wrapper.find('.sr-btn').on('click', function () {
+                        let courier_id = $(this).data('id');
+                        let rate = $(this).data('rate');
+                        let courier_name = $(this).data('name');
 
-                let $wrapper = d.get_field('ui_html').$wrapper;
-                $wrapper.html(html);
-
-                // Bind Checkbox
-                $wrapper.find('#sr-use-volumetric').on('change', function() {
-                    let is_checked = $(this).is(':checked');
-                    fetch_rates(is_checked ? 1 : 0);
-                });
-
-                // Bind Click
-                $wrapper.find('.sr-btn').on('click', function () {
-                    let courier_id = $(this).data('id');
-                    let rate = $(this).data('rate');
-                    let courier_name = $(this).data('name');
-
-                    // Prepare Items Table from context
-                    let items_html = `
+                        // Prepare Items Table from context
+                        let items_html = `
                         <table class="table table-bordered table-sm" style="margin-top:10px; font-size:12px;">
                             <thead>
                                 <tr class="bg-light">
@@ -359,31 +390,31 @@ function open_courier_dialog(frm) {
                             <tbody>
                     `;
 
-                    if (ctx.items && ctx.items.length > 0) {
-                        ctx.items.forEach(i => {
-                            items_html += `
+                        if (ctx.items && ctx.items.length > 0) {
+                            ctx.items.forEach(i => {
+                                items_html += `
                                 <tr>
                                     <td>${i.name}</td>
                                     <td>${i.sku || '-'}</td>
                                     <td class="text-right">${i.units}</td>
                                 </tr>
                             `;
-                        });
-                    } else {
-                        items_html += `<tr><td colspan="3" class="text-center text-muted">No items found details available.</td></tr>`;
-                    }
+                            });
+                        } else {
+                            items_html += `<tr><td colspan="3" class="text-center text-muted">No items found details available.</td></tr>`;
+                        }
 
-                    items_html += `</tbody></table>`;
+                        items_html += `</tbody></table>`;
 
-                    // Order Summary Dialog
-                    let summary_dialog = new frappe.ui.Dialog({
-                        title: 'Confirm Shipment Order',
-                        size: 'small',
-                        fields: [
-                            {
-                                fieldtype: 'HTML',
-                                fieldname: 'summary_html',
-                                options: `
+                        // Order Summary Dialog
+                        let summary_dialog = new frappe.ui.Dialog({
+                            title: 'Confirm Shipment Order',
+                            size: 'small',
+                            fields: [
+                                {
+                                    fieldtype: 'HTML',
+                                    fieldname: 'summary_html',
+                                    options: `
                                     <div class="mb-3">
                                         <h5 class="font-weight-bold" style="margin-bottom:5px;">${courier_name}</h5>
                                         <p class="text-muted mb-2">Shipping Cost: <b class="text-dark">₹${rate}</b></p>
@@ -394,76 +425,76 @@ function open_courier_dialog(frm) {
                                         By confirming, a Shiprocket order will be created and AWB assigned immediately.
                                     </div>
                                 `
-                            }
-                        ],
-                        primary_action_label: 'Confirm & Ship',
-                        primary_action_bootstrap_class: 'btn-primary',
-                        primary_action: function () {
-                            summary_dialog.hide();
-                            d.hide(); // Hide courier list
+                                }
+                            ],
+                            primary_action_label: 'Confirm & Ship',
+                            primary_action_bootstrap_class: 'btn-primary',
+                            primary_action: function () {
+                                summary_dialog.hide();
+                                d.hide(); // Hide courier list
 
-                            let createOrder = function () {
-                                return new Promise((resolve, reject) => {
-                                    // If ID already exists, skip creation
-                                    if (frm.doc.shipment_id) {
-                                        resolve(null);
-                                        return;
-                                    }
+                                let createOrder = function () {
+                                    return new Promise((resolve, reject) => {
+                                        // If ID already exists, skip creation
+                                        if (frm.doc.shipment_id) {
+                                            resolve(null);
+                                            return;
+                                        }
 
+                                        frappe.call({
+                                            method: 'adi_shipment.api.shiprocket.create_order_from_shipment',
+                                            args: { shipment_name: frm.doc.name },
+                                            freeze: true,
+                                            freeze_message: "Creating Shiprocket Order...",
+                                            callback: function (r) {
+                                                if (!r.exc) {
+                                                    if (r.message && r.message.shipment_id) {
+                                                        console.log("Setting shipment_id locally:", r.message.shipment_id);
+                                                        frm.set_value('shipment_id', r.message.shipment_id);
+                                                    }
+                                                    resolve(r);
+                                                } else {
+                                                    reject(r.exc);
+                                                }
+                                            }
+                                        });
+                                    });
+                                };
+
+                                createOrder().then(() => {
                                     frappe.call({
-                                        method: 'adi_shipment.api.shiprocket.create_order_from_shipment',
-                                        args: { shipment_name: frm.doc.name },
+                                        method: 'adi_shipment.api.shiprocket.assign_awb_for_shipment',
+                                        args: {
+                                            shipment_name: frm.doc.name,
+                                            courier_company_id: courier_id,
+                                            amount: rate,
+                                            courier_name: courier_name
+                                        },
                                         freeze: true,
-                                        freeze_message: "Creating Shiprocket Order...",
+                                        freeze_message: "Assigning AWB...",
                                         callback: function (r) {
                                             if (!r.exc) {
-                                                if (r.message && r.message.shipment_id) {
-                                                    console.log("Setting shipment_id locally:", r.message.shipment_id);
-                                                    frm.set_value('shipment_id', r.message.shipment_id);
-                                                }
-                                                resolve(r);
-                                            } else {
-                                                reject(r.exc);
+                                                frappe.msgprint(`Successfully shipped via ${courier_name}!`);
+                                                // Document is already submitted in backend
+                                                frm.reload_doc();
                                             }
                                         }
                                     });
+                                }).catch(err => {
+                                    frappe.msgprint("Error during shipping process. Please check logs.");
+                                    console.error(err);
                                 });
-                            };
+                            }
+                        });
 
-                            createOrder().then(() => {
-                                frappe.call({
-                                    method: 'adi_shipment.api.shiprocket.assign_awb_for_shipment',
-                                    args: {
-                                        shipment_name: frm.doc.name,
-                                        courier_company_id: courier_id,
-                                        amount: rate,
-                                        courier_name: courier_name
-                                    },
-                                    freeze: true,
-                                    freeze_message: "Assigning AWB...",
-                                    callback: function (r) {
-                                        if (!r.exc) {
-                                            frappe.msgprint(`Successfully shipped via ${courier_name}!`);
-                                            // Document is already submitted in backend
-                                            frm.reload_doc();
-                                        }
-                                    }
-                                });
-                            }).catch(err => {
-                                frappe.msgprint("Error during shipping process. Please check logs.");
-                                console.error(err);
-                            });
-                        }
+                        summary_dialog.show();
                     });
 
-                    summary_dialog.show();
-                });
-
-            } else {
-                let msg = r.message && r.message.error ? r.message.error : "No couriers available due to an API error.";
-                d.get_field('ui_html').$wrapper.html(`<div class="text-center text-danger p-4">${msg}</div>`);
+                } else {
+                    let msg = r.message && r.message.error ? r.message.error : "No couriers available due to an API error.";
+                    d.get_field('ui_html').$wrapper.html(`<div class="text-center text-danger p-4">${msg}</div>`);
+                }
             }
-        }
-    });
+        });
     }
 }
