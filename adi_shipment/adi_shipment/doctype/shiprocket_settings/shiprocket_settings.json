@@ -12,6 +12,8 @@
         "token",
         "token_expiry",
         "generate_token",
+        "tab_sales_order_settings",
+        "enable_sales_order_shipping_rate",
         "tab_naming",
         "shipment_naming_series"
     ],
@@ -50,6 +52,18 @@
             "label": "Generate Token"
         },
         {
+            "fieldname": "tab_sales_order_settings",
+            "fieldtype": "Tab Break",
+            "label": "Sales Order Settings"
+        },
+        {
+            "default": "1",
+            "description": "Show \"Check Shipping Rate 🚚\" button on Sales Order forms to check live courier rates",
+            "fieldname": "enable_sales_order_shipping_rate",
+            "fieldtype": "Check",
+            "label": "Enable Check Shipping Rate on Sales Order"
+        },
+        {
             "fieldname": "tab_naming",
             "fieldtype": "Tab Break",
             "label": "Naming Series"
@@ -61,6 +75,7 @@
             "label": "Shipment Naming Series"
         }
     ],
+
     "issingle": 1,
     "links": [],
     "modified": "2024-05-22 12:00:00.000000",
