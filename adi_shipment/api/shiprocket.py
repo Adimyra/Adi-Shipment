@@ -866,3 +866,82 @@ def cancel_shiprocket_order(doc, method):
     except Exception as e:
         frappe.log_error(f"Shiprocket Cancel Error: {str(e)}")
         frappe.msgprint(f"Warning: API Error while cancelling Shiprocket Order. Please check logs.")
+
+
+@frappe.whitelist()
+def get_shipment_totals(delivery_notes):
+    import json
+    if isinstance(delivery_notes, str):
+        try:
+            delivery_notes = json.loads(delivery_notes)
+        except Exception:
+            delivery_notes = [delivery_notes]
+
+    dn_total = 0.0
+    si_total = 0.0
+
+    if not delivery_notes:
+        return {"dn_total": 0.0, "si_total": 0.0, "missing_invoices": []}
+
+    # Clean empty/null values
+    delivery_notes = [dn for dn in delivery_notes if dn]
+    if not delivery_notes:
+        return {"dn_total": 0.0, "si_total": 0.0, "missing_invoices": []}
+
+    # Get DN totals
+    dn_docs = frappe.get_all("Delivery Note", filters={"name": ["in", delivery_notes]}, fields=["grand_total"])
+    for dn in dn_docs:
+        dn_total += float(dn.grand_total or 0.0)
+
+    # Identify which Delivery Notes do not have a Sales Invoice linked
+    missing_invoices = []
+    for dn in delivery_notes:
+        has_invoice = False
+        
+        # Check Direction 1: Delivery Note Item -> against_sales_invoice
+        dn_items = frappe.get_all("Delivery Note Item", 
+                                  filters={"parent": dn, "against_sales_invoice": ["is", "set"]}, 
+                                  fields=["against_sales_invoice"])
+        if any(item.against_sales_invoice for item in dn_items):
+            has_invoice = True
+            
+        if not has_invoice:
+            # Check Direction 2: Sales Invoice Item -> delivery_note
+            si_items = frappe.get_all("Sales Invoice Item", 
+                                      filters={"delivery_note": dn}, 
+                                      fields=["parent"])
+            if any(item.parent for item in si_items):
+                has_invoice = True
+                
+        if not has_invoice:
+            missing_invoices.append(dn)
+
+    # Find linked Sales Invoices globally for all DNs to get totals
+    linked_si = set()
+
+    dn_items_all = frappe.get_all("Delivery Note Item", 
+                                  filters={"parent": ["in", delivery_notes], "against_sales_invoice": ["is", "set"]}, 
+                                  fields=["against_sales_invoice"])
+    for item in dn_items_all:
+        if item.against_sales_invoice:
+            linked_si.add(item.against_sales_invoice)
+
+    si_items_all = frappe.get_all("Sales Invoice Item", 
+                                  filters={"delivery_note": ["in", delivery_notes]}, 
+                                  fields=["parent"])
+    for item in si_items_all:
+        if item.parent:
+            linked_si.add(item.parent)
+
+    # Get SI totals
+    if linked_si:
+        si_docs = frappe.get_all("Sales Invoice", filters={"name": ["in", list(linked_si)]}, fields=["grand_total"])
+        for si in si_docs:
+            si_total += float(si.grand_total or 0.0)
+
+    return {
+        "dn_total": dn_total,
+        "si_total": si_total,
+        "missing_invoices": missing_invoices
+    }
+

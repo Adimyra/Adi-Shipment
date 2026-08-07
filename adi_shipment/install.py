@@ -5,12 +5,33 @@ def after_install():
     create_custom_fields({
         "Shipment": [
             {
+                "fieldname": "total_delivery_note_value",
+                "label": "Total Delivery Note Value",
+                "fieldtype": "Currency",
+                "insert_after": "value_of_goods",
+                "read_only": 1
+            },
+            {
+                "fieldname": "total_sales_invoice_value",
+                "label": "Total Sales Invoice Value",
+                "fieldtype": "Currency",
+                "insert_after": "total_delivery_note_value",
+                "read_only": 1
+            },
+            {
+                "fieldname": "missing_sales_invoices",
+                "label": "Invoices Not Generated For",
+                "fieldtype": "Small Text",
+                "insert_after": "total_sales_invoice_value",
+                "read_only": 1
+            },
+            {
                 "fieldname": "payment_method",
                 "label": "Payment Method",
                 "fieldtype": "Select",
                 "options": "Prepaid\nCOD",
                 "default": "Prepaid",
-                "insert_after": "value_of_goods",
+                "insert_after": "missing_sales_invoices",
                 "read_only": 0
             },
             {
@@ -36,4 +57,14 @@ def after_install():
     from adi_shipment.api.cod_processing import setup_shiprocket_customer, setup_shiprocket_supplier
     setup_shiprocket_customer()
     setup_shiprocket_supplier()
+
+    # Set default of value_of_goods to 0
+    frappe.make_property_setter({
+        "doctype": "Shipment",
+        "fieldname": "value_of_goods",
+        "property": "default",
+        "value": "0",
+        "property_type": "Currency"
+    })
+
 
