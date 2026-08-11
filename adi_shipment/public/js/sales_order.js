@@ -61,7 +61,7 @@ function showShippingRateDialog(frm, initialPincode, isCOD) {
             {
                 fieldname: 'sec_custom',
                 fieldtype: 'Section Break',
-                label: __('⚡ Custom Weight & Box Sizer (Click to Expand)'),
+                label: __('⚡ Custom Weight & Box Dimensions (Click to Expand)'),
                 collapsible: 1,
                 collapsed: 1
             },
@@ -70,18 +70,40 @@ function showShippingRateDialog(frm, initialPincode, isCOD) {
                 fieldname: 'custom_weight',
                 fieldtype: 'Float',
                 default: 0,
-                description: __('Enter weight in kg to test custom rate')
+                description: __('Actual weight in Kg')
             },
             {
-                fieldname: 'col_break_custom',
+                fieldname: 'col_break_custom1',
                 fieldtype: 'Column Break'
             },
             {
-                label: __('Dimensions (L × W × H cm)'),
-                fieldname: 'custom_dims',
-                fieldtype: 'Data',
-                placeholder: 'e.g. 30 x 20 x 15',
-                description: __('Length × Width × Height in cm')
+                label: __('Length (L in cm)'),
+                fieldname: 'custom_length',
+                fieldtype: 'Float',
+                default: 0,
+                description: __('Length in cm')
+            },
+            {
+                fieldname: 'col_break_custom2',
+                fieldtype: 'Column Break'
+            },
+            {
+                label: __('Breadth (B in cm)'),
+                fieldname: 'custom_width',
+                fieldtype: 'Float',
+                default: 0,
+                description: __('Breadth / Width in cm')
+            },
+            {
+                fieldname: 'col_break_custom3',
+                fieldtype: 'Column Break'
+            },
+            {
+                label: __('Height (H in cm)'),
+                fieldname: 'custom_height',
+                fieldtype: 'Float',
+                default: 0,
+                description: __('Height in cm')
             },
             {
                 fieldname: 'sec_calc_btn',
@@ -293,17 +315,9 @@ function fetchAndRenderRates(dialog, fallbackPincode = "", fallbackCOD = 0) {
 
     const is_cod = fallbackCOD;
     const custom_weight = dialog.get_value('custom_weight') || 0;
-    const custom_dims = dialog.get_value('custom_dims') || '';
-
-    let cL = 0, cW = 0, cH = 0;
-    if (custom_dims) {
-        const parts = custom_dims.replace(/[^0-9.]+/g, ' ').trim().split(/\s+/);
-        if (parts.length >= 3) {
-            cL = parseFloat(parts[0]) || 0;
-            cW = parseFloat(parts[1]) || 0;
-            cH = parseFloat(parts[2]) || 0;
-        }
-    }
+    const custom_length = dialog.get_value('custom_length') || 0;
+    const custom_width = dialog.get_value('custom_width') || 0;
+    const custom_height = dialog.get_value('custom_height') || 0;
 
     $resultContainer.html('<div style="text-align:center; padding:35px; color:#64748b; font-weight:600;">⏳ Fetching live Shiprocket rates across couriers & weight slabs…</div>');
 
@@ -313,9 +327,9 @@ function fetchAndRenderRates(dialog, fallbackPincode = "", fallbackCOD = 0) {
             delivery_pincode: pincode,
             is_cod: is_cod,
             custom_weight: custom_weight,
-            custom_length: cL,
-            custom_width: cW,
-            custom_height: cH
+            custom_length: custom_length,
+            custom_width: custom_width,
+            custom_height: custom_height
         },
         callback: function (r) {
             if (!r.message || !r.message.success) {

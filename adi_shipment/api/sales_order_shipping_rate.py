@@ -53,17 +53,36 @@ def get_sales_order_shipping_rates(delivery_pincode, is_cod=0, custom_weight=0, 
     # Prepare query slabs
     query_slabs = [dict(s) for s in SLABS]
     c_wt = float(custom_weight or 0)
-    if c_wt > 0:
-        c_l = float(custom_length or 0) or 10
-        c_w = float(custom_width or 0) or 10
-        c_h = float(custom_height or 0) or 10
+    c_l = float(custom_length or 0)
+    c_w = float(custom_width or 0)
+    c_h = float(custom_height or 0)
+
+    volumetric_wt = 0.0
+    if c_l > 0 and c_w > 0 and c_h > 0:
+        volumetric_wt = round((c_l * c_w * c_h) / 5000.0, 3)
+
+    billable_wt = max(c_wt, volumetric_wt)
+
+    if billable_wt > 0 or c_l > 0 or c_w > 0 or c_h > 0:
+        c_l_send = c_l if c_l > 0 else 10
+        c_w_send = c_w if c_w > 0 else 10
+        c_h_send = c_h if c_h > 0 else 10
+        wt_send = billable_wt if billable_wt > 0 else 0.5
+
+        if volumetric_wt > c_wt and volumetric_wt > 0:
+            label_text = f"Custom Volumetric ({volumetric_wt} Kg)"
+        elif c_wt > 0:
+            label_text = f"Custom ({c_wt} Kg)"
+        else:
+            label_text = f"Custom ({wt_send} Kg)"
+
         query_slabs.append({
             "key": "custom",
-            "label": f"Custom ({c_wt} Kg)",
-            "weight": c_wt,
-            "length": c_l,
-            "width": c_w,
-            "height": c_h,
+            "label": label_text,
+            "weight": wt_send,
+            "length": c_l_send,
+            "width": c_w_send,
+            "height": c_h_send,
             "is_custom": True
         })
 
