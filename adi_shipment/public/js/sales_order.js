@@ -180,6 +180,20 @@ function showShippingRateDialog(frm, initialPincode, isCOD) {
         }
         .sr-title-refresh-btn:hover { background: #e2e8f0; color: #4f46e5; border-color: #4f46e5; }
         .sr-title-refresh-btn i { font-size: 13px; }
+
+        /* Mode Filter Checkboxes */
+        .sr-mode-filters { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+        .sr-filter-label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+        .sr-filter-label input[type="checkbox"] { display: none; }
+        .sr-filter-chip {
+            padding: 5px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;
+            border: 2px solid transparent; transition: all 0.18s; opacity: 0.45;
+        }
+        .sr-filter-label input[type="checkbox"]:checked + .sr-filter-chip { opacity: 1; }
+        .sr-filter-chip.surface { background: #fef3c7; color: #b45309; border-color: #fcd34d; }
+        .sr-filter-label input[type="checkbox"]:checked + .sr-filter-chip.surface { border-color: #f59e0b; box-shadow: 0 0 0 2px #fde68a; }
+        .sr-filter-chip.air { background: #e0f2fe; color: #0369a1; border-color: #7dd3fc; }
+        .sr-filter-label input[type="checkbox"]:checked + .sr-filter-chip.air { border-color: #38bdf8; box-shadow: 0 0 0 2px #bae6fd; }
     `;
     if (!document.getElementById('adi-shipment-rate-modal-styles')) {
         document.head.appendChild(style);
@@ -333,6 +347,17 @@ function renderRateViews(dialog, data, activeTab = 'matrix') {
             <div class="sr-info-badge ${isZoneE ? 'zone-e' : ''}">🏷️ ${data.zone}</div>
         </div>
 
+        <div class="sr-mode-filters">
+            <label class="sr-filter-label">
+                <input type="checkbox" id="sr-filter-surface" checked />
+                <span class="sr-filter-chip surface">🟡 Surface</span>
+            </label>
+            <label class="sr-filter-label">
+                <input type="checkbox" id="sr-filter-air" />
+                <span class="sr-filter-chip air">🔵 Air</span>
+            </label>
+        </div>
+
         <div class="sr-view-tabs">
             <button class="sr-tab-btn ${activeTab === 'matrix' ? 'active' : ''}" onclick="window.switchRateView('matrix')">
                 📊 Weight Slab Matrix View
@@ -347,27 +372,61 @@ function renderRateViews(dialog, data, activeTab = 'matrix') {
 
     $resultContainer.html(html);
 
+    // Helper: get active mode filters from checkboxes
+    function getActiveFilters() {
+        const filters = [];
+        if ($wrapper.find('#sr-filter-surface').is(':checked')) filters.push('surface');
+        if ($wrapper.find('#sr-filter-air').is(':checked')) filters.push('air');
+        return filters;
+    }
+
+    // Helper: re-render the currently active tab view with current filters
+    function reRenderCurrentView() {
+        const filters = getActiveFilters();
+        const isMatrix = $wrapper.find('.sr-tab-btn:contains("Matrix")').hasClass('active');
+        if (isMatrix) {
+            renderMatrixView(dialog, data, filters);
+        } else {
+            renderCardsView(dialog, data, filters);
+        }
+    }
+
+    // Wire filter checkboxes
+    $wrapper.find('#sr-filter-surface, #sr-filter-air').on('change', function () {
+        reRenderCurrentView();
+    });
+
     window.switchRateView = function (tab) {
         $wrapper.find('.sr-tab-btn').removeClass('active');
+        const filters = getActiveFilters();
         if (tab === 'matrix') {
             $wrapper.find('.sr-tab-btn:contains("Matrix")').addClass('active');
-            renderMatrixView(dialog, data);
+            renderMatrixView(dialog, data, filters);
         } else {
             $wrapper.find('.sr-tab-btn:contains("Cards")').addClass('active');
-            renderCardsView(dialog, data);
+            renderCardsView(dialog, data, filters);
         }
     };
 
+    // Initial render — Surface only by default
+    const initialFilters = ['surface'];
     if (activeTab === 'matrix') {
-        renderMatrixView(dialog, data);
+        renderMatrixView(dialog, data, initialFilters);
     } else {
-        renderCardsView(dialog, data);
+        renderCardsView(dialog, data, initialFilters);
     }
 }
 
-function renderMatrixView(dialog, data) {
+function renderMatrixView(dialog, data, activeFilters = ['surface', 'air']) {
     const $wrapper = dialog.fields_dict.rates_html.$wrapper;
     const hasCustom = data.slabs.some(s => s.key === "custom");
+
+    // Filter couriers by selected modes
+    const filteredCouriers = (data.couriers || []).filter(c => {
+        const modeClass = (c.mode || "").toLowerCase() === "air" ? "air" : "surface";
+        return activeFilters.includes(modeClass);
+    });
+
     let html = `
         <table class="sr-matrix-table">
             <thead>
@@ -392,10 +451,10 @@ function renderMatrixView(dialog, data) {
             <tbody>
     `;
 
-    if (!data.couriers || data.couriers.length === 0) {
-        html += `<tr><td colspan="${hasCustom ? 8 : 7}" style="text-align:center; padding:20px; color:#94a3b8;">No couriers available for pincode ${data.delivery_pincode}</td></tr>`;
+    if (filteredCouriers.length === 0) {
+        html += `<tr><td colspan="${hasCustom ? 8 : 7}" style="text-align:center; padding:20px; color:#94a3b8;">No couriers match the selected mode filter.</td></tr>`;
     } else {
-        data.couriers.forEach(c => {
+        filteredCouriers.forEach(c => {
             const modeClass = (c.mode || "").toLowerCase() === "air" ? "air" : "surface";
             html += `
                 <tr>
@@ -435,18 +494,25 @@ function renderMatrixView(dialog, data) {
     $wrapper.find('#sr-view-content').html(html);
 }
 
-function renderCardsView(dialog, data) {
+function renderCardsView(dialog, data, activeFilters = ['surface', 'air']) {
     const $wrapper = dialog.fields_dict.rates_html.$wrapper;
-    if (!data.couriers || data.couriers.length === 0) {
-        $wrapper.find('#sr-view-content').html('<div style="text-align:center; padding:30px; color:#94a3b8;">No couriers available for this location.</div>');
+
+    // Filter couriers by selected modes
+    const filteredCouriers = (data.couriers || []).filter(c => {
+        const modeClass = (c.mode || "").toLowerCase() === "air" ? "air" : "surface";
+        return activeFilters.includes(modeClass);
+    });
+
+    if (filteredCouriers.length === 0) {
+        $wrapper.find('#sr-view-content').html('<div style="text-align:center; padding:30px; color:#94a3b8;">No couriers match the selected mode filter.</div>');
         return;
     }
 
-    let minRate = Math.min(...data.couriers.map(c => c.rates['slab_1'] || c.rates['slab_05'] || 99999));
+    let minRate = Math.min(...filteredCouriers.map(c => c.rates['slab_1'] || c.rates['slab_05'] || 99999));
 
     let html = `<div class="sr-card-list">`;
 
-    data.couriers.forEach(c => {
+    filteredCouriers.forEach(c => {
         let logo = c.courier_name.charAt(0).toUpperCase();
         let rate1kg = c.rates['slab_1'] || c.rates['slab_05'] || 0;
         let isCheapest = rate1kg > 0 && rate1kg === minRate;
