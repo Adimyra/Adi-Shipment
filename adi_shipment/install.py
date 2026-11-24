@@ -67,4 +67,19 @@ def after_install():
         "property_type": "Currency"
     })
 
+    # Default "Description of Content" so it need not be typed on every Shipment.
+    # Set only once, so a later change from Customize Form is not overwritten on migrate.
+    if not frappe.db.exists("Property Setter", {
+        "doc_type": "Shipment",
+        "field_name": "description_of_content",
+        "property": "default",
+    }):
+        frappe.make_property_setter({
+            "doctype": "Shipment",
+            "fieldname": "description_of_content",
+            "property": "default",
+            "value": "two wheeler spare parts",
+            "property_type": "Small Text"
+        })
+
 
