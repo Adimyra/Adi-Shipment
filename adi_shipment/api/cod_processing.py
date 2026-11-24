@@ -422,7 +422,36 @@ def get_linked_sales_invoice(shipment_doc):
         if si_items:
             si_name = si_items[0].parent
             return si_name, frappe.get_doc("Sales Invoice", si_name)
-            
+
+    # Method C: the invoice was made from the Sales Order, not the Delivery Note,
+    # so neither side carries a DN link. Find a submitted invoice for the order.
+    sales_orders = []
+    for link in shipment_doc.shipment_delivery_note:
+        for so in frappe.get_all(
+            "Delivery Note Item",
+            filters={"parent": link.delivery_note},
+            pluck="against_sales_order",
+        ):
+            if so and so not in sales_orders:
+                sales_orders.append(so)
+
+    if sales_orders:
+        rows = frappe.db.sql(
+            """
+            select sii.parent
+            from `tabSales Invoice Item` sii
+            join `tabSales Invoice` si on si.name = sii.parent
+            where sii.sales_order in %(sales_orders)s
+                and si.docstatus = 1 and si.is_return = 0
+            group by sii.parent
+            order by min(si.creation)
+            limit 1
+            """,
+            {"sales_orders": sales_orders},
+        )
+        if rows:
+            return rows[0][0], frappe.get_doc("Sales Invoice", rows[0][0])
+
     return None, None
 
 
